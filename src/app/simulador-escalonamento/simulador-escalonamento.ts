@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
 import { NgxChartsModule, Color, ScaleType } from '@swimlane/ngx-charts';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { EscalonamentoService } from '../escalonamento.service';
 import { Processo } from '../models/processo';
 import { ResultadoSimulacao } from '../models/resultado-simulacao';
@@ -36,7 +37,8 @@ type ResultadoComparacao = {
     MatIconModule,
     MatTableModule,
     MatChipsModule,
-    NgxChartsModule
+    NgxChartsModule,
+    MatSlideToggleModule,
   ],
   templateUrl: './simulador-escalonamento.component.html',
   styleUrls: ['./simulador-escalonamento.component.css']
@@ -48,6 +50,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   colunas = ['id', 'chegada', 'duracao', 'prioridade', 'acoes'];
   processos = signal<Processo[]>([]);
 
+  editingId: string | null = null;
+  private originalIdEmEdicao: string | null = null;
+
   formularioProcesso = this.fb.group({
     id: ['', Validators.required],
     tempoChegada: [0, [Validators.required, Validators.min(0)]],
@@ -58,18 +63,25 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   formularioConfig = this.fb.group({
     algoritmo: [['FCFS'] as Algoritmo[], Validators.required],
     quantum: [2, [Validators.min(1)]],
+    preview: [false]
   });
 
   get algoritmosSelecionados(): Algoritmo[] {
     return (this.formularioConfig.value.algoritmo || []) as Algoritmo[];
   }
+  get jaSimulou(): boolean {
+    return !!this.resultado || this.comparacao.length > 0;
+  }
 
   resultado?: ResultadoSimulacao;
   dadosGantt: any[] = [];
-
   comparacao: ResultadoComparacao[] = [];
   dadosComparacaoEspera: { name: string; value: number }[] = [];
   dadosComparacaoVazios = false;
+
+  private resultadoConfirmado?: ResultadoSimulacao;
+  private comparacaoConfirmada: ResultadoComparacao[] = [];
+  private dadosGanttConfirmado: any[] = [];
 
   metricasDisponiveis = [
     { key: 'espera',   label: 'Espera média' },
@@ -89,15 +101,46 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   constructor(private svc: EscalonamentoService) {}
 
   ngOnInit(): void {
-    this.formularioProcesso.valueChanges.subscribe(() => this.limparMensagem());
-    this.formularioConfig.valueChanges.subscribe(() => this.limparMensagem());
+    this.formularioProcesso.valueChanges.subscribe(() => {
+      this.limparMensagem();
+      if (this.editingId && this.jaSimulou && this.formularioConfig.value.preview) {
+        this.atualizarPreviewEdicao();
+      }
+    });
+
+    this.formularioConfig.valueChanges.subscribe(() => {
+      this.limparMensagem();
+      if (this.editingId && this.jaSimulou && this.formularioConfig.value.preview) {
+        this.atualizarPreviewEdicao();
+      }
+    });
+
+    this.formularioConfig.controls.preview.valueChanges.subscribe(ativo => {
+      if (!this.jaSimulou) return;
+
+      if (ativo) {
+        if (this.editingId) this.atualizarPreviewEdicao();
+      } else {
+        this.resultado = this.resultadoConfirmado
+          ? JSON.parse(JSON.stringify(this.resultadoConfirmado))
+          : undefined;
+
+        this.comparacao = this.comparacaoConfirmada.map(c => ({ ...c }));
+        this.dadosGantt = JSON.parse(JSON.stringify(this.dadosGanttConfirmado));
+
+        if (this.resultado) {
+          this.calcularMetricasPorProcesso();
+        } else {
+          this.atualizarGraficoComparacao();
+        }
+      }
+    });
   }
 
   limparMensagem() { this.mensagemErro = null; }
 
   adicionar() {
     if (this.formularioProcesso.invalid) return;
-
     const raw = this.formularioProcesso.getRawValue();
     const p: Processo = {
       id: String(raw.id).trim(),
@@ -106,20 +149,67 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
     };
     if (!p.id) return;
-
     if (this.processos().some(x => x.id === p.id)) {
-      alert('ID já existe.');
+      this.mensagemErro = '⚠️ ID já existe.';
+      return;
+    }
+    this.processos.update(arr => [...arr, p]);
+    this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
+    this.limparMensagem();
+  }
+
+  editar(p: Processo) {
+    this.formularioProcesso.setValue({
+      id: p.id,
+      tempoChegada: p.tempoChegada,
+      duracao: p.duracao,
+      prioridade: p.prioridade ?? 1
+    });
+    this.editingId = p.id;
+    this.originalIdEmEdicao = p.id;
+    this.limparMensagem();
+  }
+
+  salvarEdicao() {
+    if (this.formularioProcesso.invalid || !this.originalIdEmEdicao) return;
+
+    const raw = this.formularioProcesso.getRawValue();
+    const atualizado: Processo = {
+      id: String(raw.id).trim(),
+      tempoChegada: Number(raw.tempoChegada),
+      duracao: Number(raw.duracao),
+      prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
+    };
+    if (!atualizado.id) return;
+
+    const conflita = this.processos().some(x => x.id === atualizado.id && x.id !== this.originalIdEmEdicao);
+    if (conflita) {
+      this.mensagemErro = '⚠️ Já existe um processo com esse ID.';
       return;
     }
 
-    this.processos.update(arr => [...arr, p]);
-    this.limparMensagem();
+    this.processos.update(arr => arr.map(p => p.id === this.originalIdEmEdicao ? atualizado : p));
+    this.cancelarEdicao();
+
+    if (this.jaSimulou) this.simular();
+  }
+
+  cancelarEdicao() {
+    this.editingId = null;
+    this.originalIdEmEdicao = null;
     this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
+    this.limparMensagem();
+
+    if (this.jaSimulou && this.formularioConfig.value.preview) {
+      this.formularioConfig.controls.preview.setValue(false, { emitEvent: true });
+    }
   }
 
   remover(id: string) {
+    if (this.editingId === id) this.cancelarEdicao();
     this.processos.update(arr => arr.filter(p => p.id !== id));
     if (this.processos().length) this.limparMensagem();
+    if (this.jaSimulou) this.simular();
   }
 
   preencherExemplo() {
@@ -135,6 +225,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.dadosComparacaoEspera = [];
     this.dadosComparacaoVazios = false;
     this.mensagemErro = null;
+    this.cancelarEdicao();
   }
 
   limpar() {
@@ -146,74 +237,126 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.dadosComparacaoEspera = [];
     this.dadosComparacaoVazios = false;
     this.mensagemErro = null;
+    this.cancelarEdicao();
+    this.resultadoConfirmado = undefined;
+    this.comparacaoConfirmada = [];
+    this.dadosGanttConfirmado = [];
   }
 
-simular() {
-  const base = this.processos();
-  if (!base.length) {
-    this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
-    this.resultado = undefined;
-    this.dadosGantt = [];
-    this.metricasDetalhadas = [];
-    this.comparacao = [];
-    this.dadosComparacaoEspera = [];
-    this.dadosComparacaoVazios = false;
-    return;
-  }
-
-  this.mensagemErro = null;
-
-  const selecionados = Array.from(new Set(this.algoritmosSelecionados));
-  const q = Number(this.formularioConfig.value.quantum ?? 2);
-
-  this.comparacao = [];
-  this.dadosComparacaoEspera = [];
-  this.dadosComparacaoVazios = false;
-
-  if (selecionados.length === 1) {
-    const algo = selecionados[0];
-    const listaCopia: Processo[] = base.map(p => ({ ...p }));
-    try {
-      this.resultado = this.executarAlgoritmo(algo, listaCopia, q);
-      this.montarGantt(this.resultado!.execucoes);
-      this.calcularMetricasPorProcesso();
-    } catch (e) {
-      console.error(`[${algo}] falhou`, e);
+  simular() {
+    const base = this.processos();
+    if (!base.length) {
+      this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
       this.resultado = undefined;
       this.dadosGantt = [];
       this.metricasDetalhadas = [];
-      this.mensagemErro = `Falha ao simular ${algo}.`;
+      this.comparacao = [];
+      this.dadosComparacaoEspera = [];
+      this.dadosComparacaoVazios = false;
+      return;
     }
-    return;
+
+    this.mensagemErro = null;
+
+    const selecionados = Array.from(new Set(this.algoritmosSelecionados));
+    const q = Number(this.formularioConfig.value.quantum ?? 2);
+
+    this.comparacao = [];
+    this.dadosComparacaoEspera = [];
+    this.dadosComparacaoVazios = false;
+
+    if (selecionados.length === 1) {
+      const algo = selecionados[0];
+      const listaCopia: Processo[] = base.map(p => ({ ...p }));
+      try {
+        this.resultado = this.executarAlgoritmo(algo, listaCopia, q);
+        this.montarGantt(this.resultado!.execucoes);
+        this.calcularMetricasPorProcesso();
+
+        this.resultadoConfirmado = JSON.parse(JSON.stringify(this.resultado));
+        this.comparacaoConfirmada = [];
+        this.dadosGanttConfirmado = JSON.parse(JSON.stringify(this.dadosGantt));
+      } catch (e) {
+        console.error(`[${algo}] falhou`, e);
+        this.resultado = undefined;
+        this.dadosGantt = [];
+        this.metricasDetalhadas = [];
+        this.mensagemErro = `Falha ao simular ${algo}.`;
+      }
+      return;
+    }
+    this.resultado = undefined;
+    this.dadosGantt = [];
+    this.metricasDetalhadas = [];
+
+    for (const algo of selecionados) {
+      const listaCopia: Processo[] = base.map(p => ({ ...p }));
+      try {
+        const r = this.executarAlgoritmo(algo, listaCopia, q);
+        const justica = this.calcularJusticaPorEspera(r, listaCopia);
+        this.comparacao.push({
+          algoritmo: algo,
+          espera: r.tempoMedioEspera,
+          retorno: r.tempoMedioRetorno,
+          resposta: r.tempoMedioResposta,
+          justica
+        });
+      } catch (e) {
+        console.error(`[${algo}] falhou`, e);
+        this.comparacao.push({ algoritmo: algo, espera: NaN, retorno: NaN, resposta: NaN, justica: NaN });
+      }
+    }
+    this.atualizarGraficoComparacao();
+
+    this.resultadoConfirmado = undefined;
+    this.comparacaoConfirmada = this.comparacao.map(c => ({ ...c }));
+    this.dadosGanttConfirmado = []; 
   }
-  this.resultado = undefined;
-  this.dadosGantt = [];
-  this.metricasDetalhadas = [];
 
-  for (const algo of selecionados) {
-    const listaCopia: Processo[] = base.map(p => ({ ...p })); 
-    try {
-      const r = this.executarAlgoritmo(algo, listaCopia, q);
-        console.log('ALG:', algo, 'EXECS:', r.execucoes);
+  private atualizarPreviewEdicao() {
+    if (!this.originalIdEmEdicao) return;
 
-      const justica = this.calcularJusticaPorEspera(r, listaCopia);
-      this.comparacao.push({
-        algoritmo: algo,
-        espera: r.tempoMedioEspera,
-        retorno: r.tempoMedioRetorno,
-        resposta: r.tempoMedioResposta,
-        justica
-      });
-    } catch (e) {
-      console.error(`[${algo}] falhou`, e);
-      this.comparacao.push({ algoritmo: algo, espera: NaN, retorno: NaN, resposta: NaN, justica: NaN });
+    const raw = this.formularioProcesso.getRawValue();
+    const atualizado: Processo = {
+      id: String(raw.id).trim(),
+      tempoChegada: Number(raw.tempoChegada),
+      duracao: Number(raw.duracao),
+      prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
+    };
+
+    const listaPreview = this.processos().map(p =>
+      p.id === this.originalIdEmEdicao ? atualizado : p
+    );
+
+    const selecionados = Array.from(new Set(this.algoritmosSelecionados));
+    const q = Number(this.formularioConfig.value.quantum ?? 2);
+
+    if (selecionados.length === 1) {
+      const algo = selecionados[0];
+      const r = this.executarAlgoritmo(algo, listaPreview.map(p => ({ ...p })), q);
+      this.resultado = r;
+      this.montarGantt(r.execucoes);
+      this.calcularMetricasPorProcesso();
+    } else {
+      this.resultado = undefined;
+      this.dadosGantt = [];
+      this.metricasDetalhadas = [];
+      this.comparacao = [];
+
+      for (const algo of selecionados) {
+        const r = this.executarAlgoritmo(algo, listaPreview.map(p => ({ ...p })), q);
+        const justica = this.calcularJusticaPorEspera(r, listaPreview);
+        this.comparacao.push({
+          algoritmo: algo,
+          espera: r.tempoMedioEspera,
+          retorno: r.tempoMedioRetorno,
+          resposta: r.tempoMedioResposta,
+          justica
+        });
+      }
+      this.atualizarGraficoComparacao();
     }
   }
-
-  console.table(this.comparacao); 
-  this.atualizarGraficoComparacao();
-}
-
 
   onTrocarMetrica() {
     if (this.comparacao.length) this.atualizarGraficoComparacao();
