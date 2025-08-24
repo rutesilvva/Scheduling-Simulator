@@ -1,0 +1,44 @@
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.cartao {
+  padding: 16px;
+  border-radius: 12px;
+  background: #fff;
+  color: #222;
+}
+
+.linha {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .linha {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+table {
+  width: 100%;
+}
+
+.chips-selecionados {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.chips-titulo {
+  font-weight: 600;
+  opacity: .8;
+}
+
