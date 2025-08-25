@@ -1,59 +1,60 @@
-# SchedulingSimulator
+# Scheduling Simulator
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.3.
+Simulador interativo de algoritmos de escalonamento de CPU, desenvolvido em **Angular + TypeScript** com interface em **Angular Material** e gráficos em **ngx-charts**.  
+O projeto foi criado como **Trabalho para compor a terceira nota da disciplina Sistemas Operacionais (UFCG)**, sob orientação do professor **Thiago Emmanuel Pereira da Cunha Silva**.
 
-## Development server
+## Funcionalidades
 
-To start a local development server, run:
+- **Cadastro de processos** com:
+  - ID único
+  - Tempo de chegada (≥ 0)
+  - Duração (burst time)
+  - Prioridade (opcional)
 
-```bash
-ng serve
-```
+- **Algoritmos implementados**:
+  - FCFS (First Come, First Served)
+  - SJF (Shortest Job First)
+  - SRTF (Shortest Remaining Time First)
+  - Round Robin (configurável com quantum)
+  - Prioridade (não-preemptivo)
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+- **Simulação completa em tempo real**:
+  - Execução no navegador (sem backend)
+  - Diagrama de Gantt (uso da CPU)
+  - Métricas automáticas:
+    - Tempo médio de espera
+    - Tempo médio de retorno (turnaround)
+    - Tempo médio de resposta
 
-## Code scaffolding
+- **Comparação entre algoritmos**:
+  - Tabela com métricas lado a lado
+  - Gráfico de barras comparativo
+  - Métrica extra de **Justiça (Jain)**
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+- **Recursos adicionais**:
+  - Edição de processos já cadastrados
+  - Pré-visualização de métricas durante edição (opcional via toggle)
+  - Reset e preenchimento automático com exemplos
+  - Validação de entrada (não aceita chegadas negativas, burst ≥ 1)
 
-```bash
-ng generate component component-name
-```
+## Interface
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+- **Formulário** para inserir ou editar processos  
+- **Tabela de processos** cadastrados com ações de editar/excluir  
+- **Seção de configuração** para escolher algoritmos e parâmetros  
+- **Visualização dos resultados**:
+  - Métricas agregadas
+  - Gráfico de Gantt
+  - Métricas por processo
+  - Comparação entre algoritmos
 
-```bash
-ng generate --help
-```
+## Tecnologias
 
-## Building
+- [Angular](https://angular.io/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Angular Material](https://material.angular.io/)
+- [Ngx-Charts](https://swimlane.github.io/ngx-charts/)
 
-To build the project run:
 
-```bash
-ng build
-```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
 
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
