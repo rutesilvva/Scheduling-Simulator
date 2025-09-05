@@ -156,6 +156,211 @@ export class EscalonamentoService {
     return this.calcularMetricas(porChegada, execucoes);
   }
 
+  simularMLFQ(
+    processos: Processo[],
+    cfg: { niveis: number; quantumBase: number; boost: number }
+  ): ResultadoSimulacao {
+    const N = Math.max(1, (cfg.niveis|0) || 3);
+    const qb = Math.max(1, (cfg.quantumBase|0) || 2);
+    const boostPeriod = Math.max(1, (cfg.boost|0) || 50);
+
+    type P = Processo & { restante:number; nivel:number; ultimoEntra:number };
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({
+      ...p, restante: p.duracao, nivel: 0, ultimoEntra: p.tempoChegada
+    }));
+
+    const filas: P[][] = Array.from({length:N}, ()=>[]);
+    const execucoes: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let ultimoBoost = tempo;
+
+    const quantumNivel = (lvl:number) => qb * (1 << lvl);
+
+    const empurrarChegadas = () => {
+      procs
+        .filter(p => p.tempoChegada <= tempo && p.restante > 0 && !filas.some(f=>f.includes(p)))
+        .forEach(p => filas[0].push(p)); 
+    };
+
+    const allDone = () => procs.every(p=>p.restante<=0);
+
+    while (!allDone()) {
+      if (tempo - ultimoBoost >= boostPeriod) {
+        const ativos = procs.filter(p => p.restante > 0 && p.tempoChegada <= tempo);
+        ativos.forEach(p => p.nivel = 0);
+        filas.forEach(f => f.splice(0, f.length));
+        ativos.sort((a,b)=> a.ultimoEntra - b.ultimoEntra).forEach(p => filas[0].push(p));
+        ultimoBoost = tempo;
+      }
+
+      empurrarChegadas();
+
+      const idxFila = filas.findIndex(f => f.length);
+      if (idxFila < 0) { tempo++; continue; }
+
+      const p = filas[idxFila].shift()!;
+      const q = quantumNivel(p.nivel);
+      const uso = Math.min(q, p.restante);
+
+      execucoes.push({ processoId: p.id, inicio: tempo, fim: tempo + uso });
+      tempo += uso;
+      p.restante -= uso;
+      p.ultimoEntra = tempo;
+
+      empurrarChegadas();
+
+      if (p.restante > 0) {
+        p.nivel = Math.min(N-1, p.nivel + 1); 
+        filas[p.nivel].push(p);
+      }
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
+  }
+
+ 
+  simularLottery(
+    processos: Processo[],
+    cfg: { ticketsPadrao: number }
+  ): ResultadoSimulacao {
+    const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao|0) || 100);
+    type P = Processo & { restante:number; tickets:number };
+
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({ ...p, restante: p.duracao, tickets: ticketsPadrao }));
+
+    const execucoes: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+
+    const allDone = () => procs.every(p=>p.restante<=0);
+
+    while (!allDone()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      const total = ready.reduce((s,p)=> s + p.tickets, 0);
+      let r = Math.random() * total;
+      let escolha = ready[0];
+      for (const p of ready) { r -= p.tickets; if (r <= 0) { escolha = p; break; } }
+
+      execucoes.push({ processoId: escolha.id, inicio: tempo, fim: tempo + 1 });
+      escolha.restante -= 1;
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
+  }
+
+ 
+  simularStride(
+    processos: Processo[],
+    cfg: { ticketsPadrao: number }
+  ): ResultadoSimulacao {
+    const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao|0) || 100);
+    const K = 10000;
+
+    type P = Processo & { restante:number; tickets:number; stride:number; pass:number };
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({
+      ...p,
+      restante: p.duracao,
+      tickets: ticketsPadrao,
+      stride: Math.floor(K / ticketsPadrao),
+      pass: 0
+    }));
+
+    const execucoes: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+
+    const allDone = () => procs.every(p=>p.restante<=0);
+
+    while (!allDone()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      ready.sort((a,b)=> a.pass - b.pass || a.tempoChegada - b.tempoChegada);
+      const cur = ready[0];
+
+      execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
+      cur.restante -= 1;
+      cur.pass += cur.stride;
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
+  }
+
+ 
+  simularFairShare(
+    processos: Processo[],
+    cfg: { sharePadrao: number }
+  ): ResultadoSimulacao {
+    const sharePadrao = Math.max(1, (cfg?.sharePadrao|0) || 1);
+    type P = Processo & { restante:number; share:number; usado:number };
+
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({ ...p, restante: p.duracao, share: sharePadrao, usado: 0 }));
+
+    const execucoes: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+
+    const allDone = () => procs.every(p=>p.restante<=0);
+
+    while (!allDone()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      ready.sort((a,b)=> (a.usado/a.share) - (b.usado/b.share) || a.tempoChegada - b.tempoChegada);
+      const cur = ready[0];
+
+      execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
+      cur.restante -= 1;
+      cur.usado += 1;
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
+  }
+
+
+  simularCFS(
+    processos: Processo[],
+    cfg: { nicePadrao: number }
+  ): ResultadoSimulacao {
+    const nicePadrao = (cfg?.nicePadrao ?? 0) | 0;
+
+    const weightFromNice = (n: number) => {
+      return Math.max(1, Math.floor(1024 / Math.pow(1.25, n)));
+    };
+
+    type P = Processo & { restante:number; vruntime:number; weight:number };
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({
+      ...p, restante: p.duracao, vruntime: 0, weight: weightFromNice(nicePadrao)
+    }));
+
+    const execucoes: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+
+    const allDone = () => procs.every(p=>p.restante<=0);
+
+    while (!allDone()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      ready.sort((a,b)=> a.vruntime - b.vruntime || a.tempoChegada - b.tempoChegada);
+      const cur = ready[0];
+
+      execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
+      cur.restante -= 1;
+      cur.vruntime += (1024 / cur.weight); 
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
+  }
+
   private copia<T>(arr: T[]): T[] { return JSON.parse(JSON.stringify(arr)); }
 
   private fundirAdjacentes(execs: Execucao[]): Execucao[] {

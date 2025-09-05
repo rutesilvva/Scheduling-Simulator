@@ -1,243 +1,446 @@
-<h2>Simulador de Escalonamento</h2>
-
-<section class="grid">
-  <form [formGroup]="formularioProcesso" class="cartao">
-    <h3>{{ editingId ? 'Editar processo' : 'Novo processo' }}</h3>
-    <div class="linha">
-      <mat-form-field appearance="outline">
-        <mat-label>ID</mat-label>
-        <input matInput formControlName="id" placeholder="P1" (focus)="limparMensagem()">
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Tempo de chegada</mat-label>
-        <input matInput type="number" formControlName="tempoChegada" (focus)="limparMensagem()">
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Duração (burst)</mat-label>
-        <input matInput type="number" formControlName="duracao" (focus)="limparMensagem()">
-      </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Prioridade</mat-label>
-        <input matInput type="number" formControlName="prioridade" (focus)="limparMensagem()">
-      </mat-form-field>
-    </div>
-
-    <ng-container *ngIf="!editingId; else editButtons">
-      <button mat-flat-button color="primary" (click)="adicionar()" [disabled]="formularioProcesso.invalid">
-        <mat-icon>add</mat-icon> Adicionar
-      </button>
-    </ng-container>
-
-    <ng-template #editButtons>
-      <button mat-flat-button color="primary" (click)="salvarEdicao()" [disabled]="formularioProcesso.invalid">
-        <mat-icon>save</mat-icon> Salvar
-      </button>
-
-   
-      <button mat-stroked-button color="basic" type="button" (click)="cancelarEdicao()">
-        <mat-icon>close</mat-icon> Cancelar
-      </button>
-    </ng-template>
-  </form>
-
-  <div class="cartao">
-    <h3>Configuração</h3>
-    <div class="linha">
-      <mat-form-field appearance="outline">
-        <mat-label>Algoritmo(s)</mat-label>
-        <mat-select [formControl]="formularioConfig.controls.algoritmo" multiple (selectionChange)="limparMensagem()">
-          <mat-option value="FCFS">FCFS</mat-option>
-          <mat-option value="SJF">SJF</mat-option>
-          <mat-option value="SRTF">SRTF</mat-option>
-          <mat-option value="RR">Round Robin</mat-option>
-          <mat-option value="PRIORIDADE">Prioridade</mat-option>
-        </mat-select>
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" *ngIf="(formularioConfig.value.algoritmo || []).includes('RR')">
-        <mat-label>Quantum</mat-label>
-        <input matInput type="number" [formControl]="formularioConfig.controls.quantum" (focus)="limparMensagem()">
-      </mat-form-field>
-    </div>
-
-   
-<div *ngIf="editingId && jaSimulou" style="margin: 6px 0 12px;">
-  <mat-slide-toggle [formControl]="formularioConfig.controls.preview">
-    Pré-visualizar métricas
-  </mat-slide-toggle>
-</div>
-
-
-    <button mat-stroked-button color="primary" (click)="simular()">
-      <mat-icon>play_arrow</mat-icon> Simular
+<mat-toolbar color="primary" class="app-toolbar">
+  <div class="toolbar-left">
+    <span class="titulo">Scheduling Simulator — CPU</span>
+  </div>
+  <div class="toolbar-right">
+    <button mat-stroked-button [color]="modo==='lecture' ? 'accent' : undefined" (click)="setModo('lecture')">
+      Modo Aula
     </button>
-    <button mat-button (click)="preencherExemplo()">Exemplo</button>
-    <button mat-button color="warn" (click)="limpar()">Limpar</button>
+    <button mat-stroked-button [color]="modo==='exploration' ? 'accent' : undefined" (click)="setModo('exploration')">
+      Modo Exploração
+    </button>
+  </div>
+</mat-toolbar>
 
-    <div *ngIf="mensagemErro" style="margin-top: 12px; color: #c62828; font-weight: bold;">
-      {{ mensagemErro }}
+<main class="layout" [ngClass]="{ 'comparacao-full': isComparacaoAtiva }">
+  <section class="painel-left">
+    <ng-container *ngIf="isComparacaoAtiva; else tabsLecture">
+      <div class="va-panel chart-full">
+        <div class="chart-toolbar">
+          <h3 class="va-title">Comparação — gráfico</h3>
+          <div class="grow"></div>
+          <label class="va-label">Ver:</label>
+          <mat-button-toggle-group
+            [(ngModel)]="chartSelecionado"
+            [ngModelOptions]="{standalone: true}"
+            [value]="chartSelecionado"
+            name="grafSel"
+            class="chart-toggle"
+            [multiple]="false">
+            <mat-button-toggle value="espera">Espera média</mat-button-toggle>
+            <mat-button-toggle value="retorno">Retorno médio</mat-button-toggle>
+            <mat-button-toggle value="resposta">Resposta média</mat-button-toggle>
+            <mat-button-toggle value="justica">Justiça (Jain)</mat-button-toggle>
+          </mat-button-toggle-group>
+        </div>
+
+        <div class="chart-host" [ngSwitch]="chartSelecionado">
+          <ngx-charts-bar-vertical
+            *ngSwitchCase="'espera'"
+            [results]="dadosComparacao.espera"
+            [xAxis]="true" [yAxis]="true"
+            [legend]="false" [animations]="true"
+            [scheme]="colorScheme">
+          </ngx-charts-bar-vertical>
+
+          <ngx-charts-bar-vertical
+            *ngSwitchCase="'retorno'"
+            [results]="dadosComparacao.retorno"
+            [xAxis]="true" [yAxis]="true"
+            [legend]="false" [animations]="true"
+            [scheme]="colorScheme">
+          </ngx-charts-bar-vertical>
+
+          <ngx-charts-bar-vertical
+            *ngSwitchCase="'resposta'"
+            [results]="dadosComparacao.resposta"
+            [xAxis]="true" [yAxis]="true"
+            [legend]="false" [animations]="true"
+            [scheme]="colorScheme">
+          </ngx-charts-bar-vertical>
+
+          <ngx-charts-bar-vertical
+            *ngSwitchCase="'justica'"
+            [results]="dadosComparacao.justica"
+            [xAxis]="true" [yAxis]="true"
+            [legend]="false" [animations]="true"
+            [scheme]="colorScheme">
+          </ngx-charts-bar-vertical>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-template #tabsLecture>
+      <mat-tab-group [selectedIndex]="modo==='lecture' ? 0 : 1" class="tabs-lecture">
+        <mat-tab label="Slides">
+          <div class="cartao slide">
+            <h3>(Resize-able) Process Timeline</h3>
+            <p>
+              • Conceitos: chegada, duração (burst), prioridade, preempção. <br>
+              • Métricas: espera (WT), retorno/turnaround (TAT), resposta (RT). <br>
+              • Trade-offs: FCFS, SJF, SRTF, RR, Prioridade, MLFQ, Lottery, Stride, Fair-Share, CFS.
+            </p>
+            <mat-divider></mat-divider>
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Explicações">
+          <div class="cartao slide">
+            <h3>Intuição dos Algoritmos</h3>
+            <p>• FCFS, SJF/SRTF, RR, Prioridade, MLFQ, Lottery, Stride, Fair-Share, CFS.</p>
+            <mat-divider></mat-divider>
+            <p class="muted">Troque para <strong>Modo Exploração</strong> para simular.</p>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    </ng-template>
+  </section>
+
+  <section class="painel-right" *ngIf="modo==='exploration'; else dicaLecture">
+
+    <ng-template #configProcessos>
+      <form class="va-panel" [formGroup]="formularioProcesso" *ngIf="mostrarForm || editingId">
+        <h3 class="va-title">{{ editingId ? 'Editar processo' : 'Novo processo' }}</h3>
+
+        <div class="va-grid">
+          <label class="va-field">
+            <span class="va-label">ID*</span>
+            <input class="va-input" formControlName="id" placeholder="P1" (focus)="limparMensagem()">
+          </label>
+
+          <label class="va-field">
+            <span class="va-label">Tempo de chegada*</span>
+            <input class="va-input" type="number" formControlName="tempoChegada" (focus)="limparMensagem()">
+          </label>
+
+          <label class="va-field">
+            <span class="va-label">Duração (burst)*</span>
+            <input class="va-input" type="number" formControlName="duracao" (focus)="limparMensagem()">
+          </label>
+
+          <label class="va-field">
+            <span class="va-label">Prioridade</span>
+            <input class="va-input" type="number" formControlName="prioridade" (focus)="limparMensagem()">
+          </label>
+        </div>
+      </form>
+
+      <section class="va-panel" [formGroup]="formularioConfig">
+        <h3 class="va-title">Configuração</h3>
+
+        <div class="va-grid">
+          <div class="va-field va-field-col2">
+            <span class="va-label">Algoritmo(s)*</span>
+            <div class="va-checkbox-group">
+              <label *ngFor="let algo of listaAlgoritmos" class="va-checkbox">
+                <input
+                  type="checkbox"
+                  [checked]="algoritmosSelecionados.includes(algo)"
+                  (change)="onToggleAlgoritmo(algo, $event)">
+                <span>{{ algo }}</span>
+              </label>
+            </div>
+          </div>
+
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('RR')">
+            <span class="va-label">Quantum (RR)</span>
+            <input class="va-input" type="number" formControlName="quantum" (focus)="limparMensagem()">
+          </label>
+
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
+            <span class="va-label">MLFQ — Níveis</span>
+            <input class="va-input" type="number" formControlName="mlfqNiveis">
+          </label>
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
+            <span class="va-label">MLFQ — Quantum base</span>
+            <input class="va-input" type="number" formControlName="mlfqQuantumBase">
+          </label>
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
+            <span class="va-label">MLFQ — Boost (período)</span>
+            <input class="va-input" type="number" formControlName="mlfqBoost">
+          </label>
+
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('LOTTERY')">
+            <span class="va-label">Lottery — Tickets padrão</span>
+            <input class="va-input" type="number" formControlName="lotteryTicketsPadrao">
+          </label>
+
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('STRIDE')">
+            <span class="va-label">Stride — Tickets padrão</span>
+            <input class="va-input" type="number" formControlName="strideTicketsPadrao">
+          </label>
+
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('FAIR')">
+            <span class="va-label">Fair — Share padrão</span>
+            <input class="va-input" type="number" formControlName="fairSharePadrao">
+          </label>
+
+          <label class="va-field" *ngIf="algoritmosSelecionados.includes('CFS')">
+            <span class="va-label">CFS — Nice padrão</span>
+            <input class="va-input" type="number" formControlName="cfsNicePadrao">
+          </label>
+
+          <label class="va-field va-toggle" *ngIf="editingId && jaSimulou">
+            <input type="checkbox" formControlName="preview">
+            <span>Pré-visualizar métricas</span>
+          </label>
+        </div>
+
+        <div *ngIf="mensagemErro" class="va-error">{{ mensagemErro }}</div>
+      </section>
+
+      <section class="va-panel" *ngIf="processos().length">
+        <div class="va-row">
+          <h3 class="va-title">Processos</h3>
+          <div class="va-inline">
+            <span class="va-label" style="margin-right:8px;">Algoritmo(s):</span>
+            <span class="va-chip" *ngFor="let a of algoritmosSelecionados">{{ a }}</span>
+          </div>
+        </div>
+
+        <table class="va-table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Chegada</th><th>Duração</th><th>Prioridade</th>
+            </tr>
+          </thead>
+        <tbody>
+            <tr *ngFor="let p of processos()">
+              <td>{{ p.id }}</td>
+              <td class="num">{{ p.tempoChegada }}</td>
+              <td class="num">{{ p.duracao }}</td>
+              <td class="num">{{ p.prioridade ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </ng-template>
+
+    <ng-container *ngIf="!temResultados; else resultadosPrimeiro">
+      <ng-container [ngTemplateOutlet]="configProcessos"></ng-container>
+      <div class="va-gap"></div>
+      <ng-container [ngTemplateOutlet]="resultadoBloco"></ng-container>
+    </ng-container>
+
+    <ng-template #resultadosPrimeiro>
+      <div class="result-anchor" #resultTop></div>
+      <ng-container [ngTemplateOutlet]="resultadoBloco"></ng-container>
+      <div class="va-gap"></div>
+      <ng-container [ngTemplateOutlet]="configProcessos"></ng-container>
+    </ng-template>
+
+    <ng-template #resultadoBloco>
+      <section class="va-grid" *ngIf="resultado">
+        <div class="va-panel">
+          <h3 class="va-title">Métricas</h3>
+          <p class="muted">Algoritmo(s): {{ algoritmosSelecionados.length ? algoritmosSelecionados.join(', ') : '—' }}</p>
+          <p><strong>Espera média:</strong> {{ resultado.tempoMedioEspera }}</p>
+          <p><strong>Retorno médio:</strong> {{ resultado.tempoMedioRetorno }}</p>
+          <p><strong>Resposta média:</strong> {{ resultado.tempoMedioResposta }}</p>
+        </div>
+
+        <div class="va-panel">
+          <h3 class="va-title">Gantt (CPU)</h3>
+          <div class="chart-clip">
+            <ngx-charts-bar-horizontal-stacked
+              [results]="dadosGantt"
+              [xAxis]="true"
+              [yAxis]="true"
+              [legend]="false"
+              [animations]="true"
+              [scheme]="colorScheme"
+              [customColors]="coresGanttUnico"
+              [view]="[ganttWidth, ganttHeightSingle]">
+            </ngx-charts-bar-horizontal-stacked>
+          </div>
+          <small class="muted">Passe o mouse para ver intervalos.</small>
+
+          <div class="va-inline" style="flex-wrap: wrap; gap:8px; margin-top:8px;">
+            <span class="va-label" style="margin-right:6px;">Legenda:</span>
+            <ng-container *ngFor="let p of processos()">
+              <span class="va-chip" [style.background]="paletaProcessos[p.id]" [style.color]="'#fff'">{{ p.id }}</span>
+            </ng-container>
+            <span class="va-chip" [style.background]="paletaProcessos['IDLE']" [style.color]="'#000'">IDLE</span>
+          </div>
+
+          <div *ngIf="resultado?.execucoes?.length" class="passo-indicador">
+            Passo {{ passoAtual + 1 }} / {{ totalPassos }}
+            <mat-progress-bar mode="determinate" [value]="((passoAtual + 1) / totalPassos) * 100"></mat-progress-bar>
+            <div class="muted" style="margin-top:6px;">
+              Execução atual:
+              <ng-container *ngIf="resultado.execucoes[passoAtual] as e">
+                {{ e.processoId }} ({{ e.inicio }} → {{ e.fim }})
+              </ng-container>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="va-grid" *ngIf="!resultado && comparacao.length">
+        <div class="va-panel">
+          <h3 class="va-title">Resumo (médias por algoritmo)</h3>
+          <table class="va-table">
+            <thead>
+              <tr>
+                <th>Algoritmo</th>
+                <th>Espera média</th>
+                <th>Retorno médio</th>
+                <th>Resposta média</th>
+                <th>Justiça (Jain)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let c of comparacao">
+                <td>{{ c.algoritmo }}</td>
+                <td class="num">{{ c.espera }}</td>
+                <td class="num">{{ c.retorno }}</td>
+                <td class="num">{{ c.resposta }}</td>
+                <td class="num">{{ c.justica | number:'1.3-3' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+       
+        <div class="va-panel" *ngIf="!isComparacaoAtiva">
+          <h3 class="va-title">Comparação — gráficos</h3>
+          <div class="cmp-grid-4">
+            <div class="mini-chart">
+              <div class="mini-title">Espera média</div>
+              <ngx-charts-bar-vertical
+                [results]="dadosComparacao.espera"
+                [xAxis]="true" [yAxis]="true"
+                [legend]="false" [animations]="true"
+                [scheme]="colorScheme">
+              </ngx-charts-bar-vertical>
+            </div>
+
+            <div class="mini-chart">
+              <div class="mini-title">Retorno médio</div>
+              <ngx-charts-bar-vertical
+                [results]="dadosComparacao.retorno"
+                [xAxis]="true" [yAxis]="true"
+                [legend]="false" [animations]="true"
+                [scheme]="colorScheme">
+              </ngx-charts-bar-vertical>
+            </div>
+
+            <div class="mini-chart">
+              <div class="mini-title">Resposta média</div>
+              <ngx-charts-bar-vertical
+                [results]="dadosComparacao.resposta"
+                [xAxis]="true" [yAxis]="true"
+                [legend]="false" [animations]="true"
+                [scheme]="colorScheme">
+              </ngx-charts-bar-vertical>
+            </div>
+
+            <div class="mini-chart">
+              <div class="mini-title">Justiça (Jain)</div>
+              <ngx-charts-bar-vertical
+                [results]="dadosComparacao.justica"
+                [xAxis]="true" [yAxis]="true"
+                [legend]="false" [animations]="true"
+                [scheme]="colorScheme">
+              </ngx-charts-bar-vertical>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="va-grid" *ngIf="!resultado && comparacao.length">
+        <div class="va-panel" *ngFor="let algo of algoritmosSelecionados" style="min-width: 320px;">
+          <h3 class="va-title">Gantt — {{ algo }}</h3>
+
+          <div class="chart-clip">
+            <ngx-charts-bar-horizontal-stacked
+              [results]="ganttMulti[algo]"
+              [xAxis]="true"
+              [yAxis]="true"
+              [legend]="false"
+              [animations]="true"
+              [customColors]="coresGanttMulti[algo]"
+              [view]="[ganttWidth, ganttHeightMulti(algo)]">
+            </ngx-charts-bar-horizontal-stacked>
+          </div>
+
+          <div class="va-inline" style="flex-wrap: wrap; gap:8px; margin-top:8px;">
+            <span class="va-label" style="margin-right:6px;">Legenda:</span>
+            <ng-container *ngFor="let p of processos()">
+              <span class="va-chip" [style.background]="paletaProcessos[p.id]" [style.color]="'#fff'">{{ p.id }}</span>
+            </ng-container>
+            <span class="va-chip" [style.background]="paletaProcessos['IDLE']" [style.color]="'#000'">IDLE</span>
+          </div>
+
+          <table class="va-table" style="margin-top:10px" *ngIf="resultadosMulti[algo] as r">
+            <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+            <tbody>
+              <tr><td>Espera média</td><td class="num">{{ r.tempoMedioEspera }}</td></tr>
+              <tr><td>Retorno médio</td><td class="num">{{ r.tempoMedioRetorno }}</td></tr>
+              <tr><td>Resposta média</td><td class="num">{{ r.tempoMedioResposta }}</td></tr>
+              <tr><td>Justiça (Jain)</td><td class="num">{{ getJustica(algo) | number:'1.3-3' }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </ng-template>
+  </section>
+
+  <ng-template #dicaLecture>
+    <section class="painel-right">
+      <div class="va-panel muted">
+        Selecione <strong>Modo Exploração</strong> para abrir o painel de simulação.
+      </div>
+    </section>
+  </ng-template>
+
+  <div class="action-dock" [class.is-open]="actionDockOpen">
+    <button class="dock-toggle" type="button" (click)="toggleActionDock()" aria-label="Alternar menu de ações">
+      <span class="chevron">{{ actionDockOpen ? '›' : '‹' }}</span>
+    </button>
+
+    <div class="dock-panel">
+      <button class="dock-item" type="button" (click)="adicionarDock()">Adicionar</button>
+      <button class="dock-item" type="button" (click)="editarDock()" [disabled]="!processos().length">Editar</button>
+      <button class="dock-item" type="button" (click)="removerDock()" [disabled]="!processos().length">Remover</button>
+      <button class="dock-item primary" type="button" (click)="simular()" [disabled]="!processos().length">Simular</button>
+      <button class="dock-item" type="button" (click)="preencherExemplo()">Exemplo</button>
+      <button class="dock-item warn" type="button" (click)="limpar()">Limpar</button>
+
+      <button class="dock-item" type="button" *ngIf="editingId" (click)="salvarEdicao()" [disabled]="!canSave">
+        Salvar edição
+      </button>
+      <button class="dock-item" type="button" *ngIf="editingId" (click)="cancelarEdicao()">
+        Cancelar edição
+      </button>
     </div>
   </div>
-</section>
+</main>
 
-<section class="cartao" *ngIf="processos().length">
-  <h3>Processos</h3>
+<footer class="player" *ngIf="resultado && totalPassos">
+  <div class="player-left">
+    <button mat-icon-button (click)="inicio()" [disabled]="!resultado || !totalPassos" matTooltip="Início">
+      <mat-icon>first_page</mat-icon>
+    </button>
+    <button mat-icon-button (click)="passoAnterior()" [disabled]="!resultado || passoAtual===0" matTooltip="Anterior">
+      <mat-icon>chevron_left</mat-icon>
+    </button>
 
-  <p style="margin: 6px 0 12px;">
-      <strong>Algoritmo(s) selecionado(s):</strong>
-      {{ algoritmosSelecionados.length ? algoritmosSelecionados.join(', ') : '—' }}
-  </p>
+    <button mat-fab color="primary" (click)="tocando ? pausar() : tocar()" [disabled]="!resultado || !totalPassos" matTooltip="Play/Pause">
+      <mat-icon>{{ tocando ? 'pause' : 'play_arrow' }}</mat-icon>
+    </button>
 
-  <table mat-table [dataSource]="processos()" class="mat-elevation-z1">
-    <ng-container matColumnDef="id">
-      <th mat-header-cell *matHeaderCellDef>ID</th>
-      <td mat-cell *matCellDef="let p">{{ p.id }}</td>
-    </ng-container>
-
-    <ng-container matColumnDef="chegada">
-      <th mat-header-cell *matHeaderCellDef>Chegada</th>
-      <td mat-cell *matCellDef="let p">{{ p.tempoChegada }}</td>
-    </ng-container>
-
-    <ng-container matColumnDef="duracao">
-      <th mat-header-cell *matHeaderCellDef>Duração</th>
-      <td mat-cell *matCellDef="let p">{{ p.duracao }}</td>
-    </ng-container>
-
-    <ng-container matColumnDef="prioridade">
-      <th mat-header-cell *matHeaderCellDef>Prioridade</th>
-      <td mat-cell *matCellDef="let p">{{ p.prioridade ?? '—' }}</td>
-    </ng-container>
-
-    <ng-container matColumnDef="acoes">
-      <th mat-header-cell *matHeaderCellDef></th>
-      <td mat-cell *matCellDef="let p">
-        <button mat-icon-button color="primary" (click)="editar(p)" [disabled]="!!editingId && editingId !== p.id">
-          <mat-icon>edit</mat-icon>
-        </button>
-        <button mat-icon-button color="warn" (click)="remover(p.id)">
-          <mat-icon>delete</mat-icon>
-        </button>
-      </td>
-    </ng-container>
-
-    <tr mat-header-row *matHeaderRowDef="colunas"></tr>
-    <tr mat-row *matRowDef="let row; columns: colunas;"></tr>
-  </table>
-</section>
-
-<section class="grid" *ngIf="resultado">
-  <div class="cartao">
-    <h3>Métricas</h3>
-    <p style="margin: 4px 0 12px;">
-      <strong>Algoritmo(s):</strong>
-      {{ algoritmosSelecionados.length ? algoritmosSelecionados.join(', ') : '—' }}
-    </p>
-    <p><strong>Espera média:</strong> {{ resultado.tempoMedioEspera }}</p>
-    <p><strong>Retorno médio (turnaround):</strong> {{ resultado.tempoMedioRetorno }}</p>
-    <p><strong>Resposta média:</strong> {{ resultado.tempoMedioResposta }}</p>
+    <button mat-icon-button (click)="proximoPasso()" [disabled]="!resultado || passoAtual>=totalPassos-1" matTooltip="Próximo">
+      <mat-icon>chevron_right</mat-icon>
+    </button>
+    <button mat-icon-button (click)="fim()" [disabled]="!resultado || !totalPassos" matTooltip="Fim">
+      <mat-icon>last_page</mat-icon>
+    </button>
   </div>
-
-  <div class="cartao">
-    <h3>Gantt (CPU)</h3>
-    <ngx-charts-bar-horizontal-stacked
-      [results]="dadosGantt"
-      [xAxis]="true"
-      [yAxis]="true"
-      [legend]="false"
-      [animations]="true"
-      [scheme]="colorScheme">
-    </ngx-charts-bar-horizontal-stacked>
-    <small>Dica: passe o mouse para ver os intervalos (ex.: P1 (0–3)).</small>
+  <div class="player-right">
+    <span class="muted">Speed</span>
+    <button class="va-btn" (click)="setVelocidade(0.5)" [class.is-active]="velocidade===0.5">0.5×</button>
+    <button class="va-btn" (click)="setVelocidade(1)"   [class.is-active]="velocidade===1">1.0×</button>
+    <button class="va-btn" (click)="setVelocidade(2)"   [class.is-active]="velocidade===2">2.0×</button>
   </div>
-</section>
-
-<section class="cartao" *ngIf="resultado && metricasDetalhadas.length">
-  <h3>Métricas por processo</h3>
-  <table mat-table [dataSource]="metricasDetalhadas" class="mat-elevation-z1">
-    <ng-container matColumnDef="id">
-      <th mat-header-cell *matHeaderCellDef>Processo</th>
-      <td mat-cell *matCellDef="let m">{{ m.id }}</td>
-    </ng-container>
-    <ng-container matColumnDef="espera">
-      <th mat-header-cell *matHeaderCellDef>Espera</th>
-      <td mat-cell *matCellDef="let m">{{ m.espera }}</td>
-    </ng-container>
-    <ng-container matColumnDef="retorno">
-      <th mat-header-cell *matHeaderCellDef>Retorno</th>
-      <td mat-cell *matCellDef="let m">{{ m.retorno }}</td>
-    </ng-container>
-    <ng-container matColumnDef="resposta">
-      <th mat-header-cell *matHeaderCellDef>Resposta</th>
-      <td mat-cell *matCellDef="let m">{{ m.resposta }}</td>
-    </ng-container>
-
-    <tr mat-header-row *matHeaderRowDef="['id','espera','retorno','resposta']"></tr>
-    <tr mat-row *matRowDef="let row; columns: ['id','espera','retorno','resposta'];"></tr>
-  </table>
-</section>
-
-<section class="grid" *ngIf="!resultado && comparacao.length">
-  <div class="cartao">
-    <h3>Comparação de métricas</h3>
-    <p style="margin: 4px 0 12px;">
-      <strong>Algoritmos selecionados:</strong>
-      {{ algoritmosSelecionados.join(', ') }}
-    </p>
-
-    <table mat-table [dataSource]="comparacao" class="mat-elevation-z1">
-      <ng-container matColumnDef="algoritmo">
-        <th mat-header-cell *matHeaderCellDef>Algoritmo</th>
-        <td mat-cell *matCellDef="let c">{{ c.algoritmo }}</td>
-      </ng-container>
-      <ng-container matColumnDef="espera">
-        <th mat-header-cell *matHeaderCellDef>Espera média</th>
-        <td mat-cell *matCellDef="let c">{{ c.espera }}</td>
-      </ng-container>
-      <ng-container matColumnDef="retorno">
-        <th mat-header-cell *matHeaderCellDef>Retorno médio</th>
-        <td mat-cell *matCellDef="let c">{{ c.retorno }}</td>
-      </ng-container>
-      <ng-container matColumnDef="resposta">
-        <th mat-header-cell *matHeaderCellDef>Resposta média</th>
-        <td mat-cell *matCellDef="let c">{{ c.resposta }}</td>
-      </ng-container>
-      <ng-container matColumnDef="justica">
-        <th mat-header-cell *matHeaderCellDef>Justiça (Jain)</th>
-        <td mat-cell *matCellDef="let c">{{ c.justica }}</td>
-      </ng-container>
-
-      <tr mat-header-row *matHeaderRowDef="['algoritmo','espera','retorno','resposta','justica']"></tr>
-      <tr mat-row *matRowDef="let row; columns: ['algoritmo','espera','retorno','resposta','justica'];"></tr>
-    </table>
-  </div>
-
-  <div class="cartao">
-    <h3>Comparação</h3>
-
-    <mat-form-field appearance="outline" style="width: 100%; margin-bottom: 12px;">
-      <mat-label>Métrica</mat-label>
-      <mat-select [(value)]="metricaSelecionada" (selectionChange)="onTrocarMetrica()">
-        <mat-option *ngFor="let m of metricasDisponiveis" [value]="m.key">
-          {{ m.label }}
-        </mat-option>
-      </mat-select>
-    </mat-form-field>
-
-    <ngx-charts-bar-vertical
-      [results]="dadosComparacaoEspera"
-      [xAxis]="true"
-      [yAxis]="true"
-      [legend]="false"
-      [animations]="true"
-      [scheme]="colorScheme">
-    </ngx-charts-bar-vertical>
-
-    <div *ngIf="dadosComparacaoVazios" style="opacity:.7; font-size:.9rem; margin-top:6px;">
-      Nenhuma série com valores — ajuste os processos/algoritmos.
-    </div>
-  </div>
-</section>
+</footer>
