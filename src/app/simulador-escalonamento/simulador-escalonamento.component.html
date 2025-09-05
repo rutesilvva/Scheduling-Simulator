@@ -13,6 +13,7 @@
 </mat-toolbar>
 
 <main class="layout" [ngClass]="{ 'comparacao-full': isComparacaoAtiva }">
+  <!-- COLUNA ESQUERDA -->
   <section class="painel-left">
     <ng-container *ngIf="isComparacaoAtiva; else tabsLecture">
       <div class="va-panel chart-full">
@@ -97,7 +98,6 @@
   </section>
 
   <section class="painel-right" *ngIf="modo==='exploration'; else dicaLecture">
-
     <ng-template #configProcessos>
       <form class="va-panel" [formGroup]="formularioProcesso" *ngIf="mostrarForm || editingId">
         <h3 class="va-title">{{ editingId ? 'Editar processo' : 'Novo processo' }}</h3>
@@ -113,10 +113,14 @@
             <input class="va-input" type="number" formControlName="tempoChegada" (focus)="limparMensagem()">
           </label>
 
-          <label class="va-field">
-            <span class="va-label">Duração (burst)*</span>
-            <input class="va-input" type="number" formControlName="duracao" (focus)="limparMensagem()">
-          </label>
+         <label class="va-field">
+  <span class="va-label">Duração (burst)*</span>
+  <input
+    class="va-input"
+    type="number"
+    formControlName="duracao"
+    (focus)="limparMensagem()">
+</label>
 
           <label class="va-field">
             <span class="va-label">Prioridade</span>
@@ -149,35 +153,35 @@
 
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
             <span class="va-label">MLFQ — Níveis</span>
-            <input class="va-input" type="number" formControlName="mlfqNiveis">
+            <input class="va-input" type="number" formControlName="mlfqNiveis" (focus)="limparMensagem()">
           </label>
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
             <span class="va-label">MLFQ — Quantum base</span>
-            <input class="va-input" type="number" formControlName="mlfqQuantumBase">
+            <input class="va-input" type="number" formControlName="mlfqQuantumBase" (focus)="limparMensagem()">
           </label>
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
             <span class="va-label">MLFQ — Boost (período)</span>
-            <input class="va-input" type="number" formControlName="mlfqBoost">
+            <input class="va-input" type="number" formControlName="mlfqBoost" (focus)="limparMensagem()">
           </label>
 
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('LOTTERY')">
             <span class="va-label">Lottery — Tickets padrão</span>
-            <input class="va-input" type="number" formControlName="lotteryTicketsPadrao">
+            <input class="va-input" type="number" formControlName="lotteryTicketsPadrao" (focus)="limparMensagem()">
           </label>
 
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('STRIDE')">
             <span class="va-label">Stride — Tickets padrão</span>
-            <input class="va-input" type="number" formControlName="strideTicketsPadrao">
+            <input class="va-input" type="number" formControlName="strideTicketsPadrao" (focus)="limparMensagem()">
           </label>
 
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('FAIR')">
             <span class="va-label">Fair — Share padrão</span>
-            <input class="va-input" type="number" formControlName="fairSharePadrao">
+            <input class="va-input" type="number" formControlName="fairSharePadrao" (focus)="limparMensagem()">
           </label>
 
           <label class="va-field" *ngIf="algoritmosSelecionados.includes('CFS')">
             <span class="va-label">CFS — Nice padrão</span>
-            <input class="va-input" type="number" formControlName="cfsNicePadrao">
+            <input class="va-input" type="number" formControlName="cfsNicePadrao" (focus)="limparMensagem()">
           </label>
 
           <label class="va-field va-toggle" *ngIf="editingId && jaSimulou">
@@ -204,7 +208,7 @@
               <th>ID</th><th>Chegada</th><th>Duração</th><th>Prioridade</th>
             </tr>
           </thead>
-        <tbody>
+          <tbody>
             <tr *ngFor="let p of processos()">
               <td>{{ p.id }}</td>
               <td class="num">{{ p.tempoChegada }}</td>
@@ -301,7 +305,6 @@
           </table>
         </div>
 
-       
         <div class="va-panel" *ngIf="!isComparacaoAtiva">
           <h3 class="va-title">Comparação — gráficos</h3>
           <div class="cmp-grid-4">
@@ -403,7 +406,8 @@
       <button class="dock-item" type="button" (click)="adicionarDock()">Adicionar</button>
       <button class="dock-item" type="button" (click)="editarDock()" [disabled]="!processos().length">Editar</button>
       <button class="dock-item" type="button" (click)="removerDock()" [disabled]="!processos().length">Remover</button>
-      <button class="dock-item primary" type="button" (click)="simular()" [disabled]="!processos().length">Simular</button>
+      <!-- desabilita se não houver algoritmos selecionados -->
+      <button class="dock-item primary" type="button" (click)="simular()" [disabled]="!processos().length || !algoritmosSelecionados.length">Simular</button>
       <button class="dock-item" type="button" (click)="preencherExemplo()">Exemplo</button>
       <button class="dock-item warn" type="button" (click)="limpar()">Limpar</button>
 

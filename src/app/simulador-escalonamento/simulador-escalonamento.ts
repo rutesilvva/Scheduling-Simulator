@@ -91,8 +91,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     prioridade: [1]
   });
 
+  // >>> NÃO começa com nenhum algoritmo selecionado
   formularioConfig = this.fb.group({
-    algoritmo: [['FCFS'] as Algoritmo[], Validators.required],
+    algoritmo: [[] as Algoritmo[]], // sem default; deixei sem Validators.required para não poluir o estado do form
     quantum: [2, [Validators.min(1)]],
     mlfqNiveis: [3, [Validators.min(1)]],
     mlfqQuantumBase: [2, [Validators.min(1)]],
@@ -109,10 +110,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
   get jaSimulou(): boolean { return !!this.resultado || this.comparacao.length > 0; }
   get temResultados(): boolean { return this.jaSimulou; }
-
-  get isComparacaoAtiva(): boolean {
-    return !this.resultado && this.comparacao.length > 0;
-  }
+  get isComparacaoAtiva(): boolean { return !this.resultado && this.comparacao.length > 0; }
 
   resultado?: ResultadoSimulacao;
   dadosGantt: any[] = [];
@@ -168,22 +166,21 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   constructor(private svc: EscalonamentoService) {}
 
-ngOnInit(): void {
-  this.formularioProcesso.valueChanges.subscribe(() => {
-    this.limparMensagem();
-    if (this.editingId && this.jaSimulou && this.formularioConfig.value.preview) {
-      this.atualizarPreviewEdicao();
-    }
-  });
+  ngOnInit(): void {
+    this.formularioProcesso.valueChanges.subscribe(() => {
+      this.limparMensagem();
+      if (this.editingId && this.jaSimulou && this.formularioConfig.value.preview) {
+        this.atualizarPreviewEdicao();
+      }
+    });
 
-
-  this.formularioConfig.controls.quantum.valueChanges?.subscribe(() => {
-    if (!this.jaSimulou) return;
-    if (!this.algoritmosSelecionados.includes('RR')) return;
-    if (this.editingId && this.formularioConfig.value.preview) this.atualizarPreviewEdicao();
-    else this.simular();
-  });
-}
+    this.formularioConfig.controls.quantum.valueChanges?.subscribe(() => {
+      if (!this.jaSimulou) return;
+      if (!this.algoritmosSelecionados.includes('RR')) return;
+      if (this.editingId && this.formularioConfig.value.preview) this.atualizarPreviewEdicao();
+      else this.simular();
+    });
+  }
 
   setModo(m: 'lecture' | 'exploration') {
     this.modo = m;
@@ -192,25 +189,24 @@ ngOnInit(): void {
     }
   }
 
-onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
-  const checked = (ev.target as HTMLInputElement).checked;
+  onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
+    const checked = (ev.target as HTMLInputElement).checked;
+    const atual = [...this.algoritmosSelecionados];
+    const novo = checked
+      ? (atual.includes(algo) ? atual : [...atual, algo])
+      : atual.filter(a => a !== algo);
 
-  const atual = [...this.algoritmosSelecionados];
+    this.formularioConfig.controls.algoritmo.setValue(novo as Algoritmo[], { emitEvent: false });
 
-  const novo = checked
-    ? (atual.includes(algo) ? atual : [...atual, algo])
-    : atual.filter(a => a !== algo);
-
-  this.formularioConfig.controls.algoritmo.setValue(novo as Algoritmo[], { emitEvent: false });
-
-  if (this.jaSimulou) {
-    if (this.editingId && this.formularioConfig.value.preview) {
-      this.atualizarPreviewEdicao();
-    } else {
-      this.simular();
+    if (this.jaSimulou) {
+      if (this.editingId && this.formularioConfig.value.preview) {
+        this.atualizarPreviewEdicao();
+      } else {
+        this.simular();
+      }
     }
   }
-}
+
   get totalPassos(): number { return this.resultado?.execucoes?.length ?? 0; }
   tocar() {
     if (!this.resultado || !this.totalPassos) return;
@@ -235,7 +231,9 @@ onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
       this.mostrarForm = true;
       this.editingId = null;
       this.originalIdEmEdicao = null;
+      // abre formulário limpo E zera seleção de algoritmos
       this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
+      this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
       return;
     }
     if (!this.editingId) this.adicionar();
@@ -324,6 +322,8 @@ onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
     this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
     this.mensagemErro = null;
     this.mostrarForm = false;
+    // garante que não herde seleção
+    this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
     this.cancelarEdicao();
   }
 
@@ -345,6 +345,8 @@ onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
     this.coresGanttMulti = {};
     this.paletaProcessos = {};
     this.kpisResumo = undefined;
+    // zera seleção de algoritmos
+    this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
   }
 
   private rolarParaResultados() {
@@ -372,10 +374,16 @@ onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
       return;
     }
 
-    let selecionados = Array.from(new Set(this.algoritmosSelecionados));
+    const selecionados = Array.from(new Set(this.algoritmosSelecionados));
     if (!selecionados.length) {
-      selecionados = ['FCFS'];
-      this.formularioConfig.controls.algoritmo.setValue(selecionados as Algoritmo[], { emitEvent: false });
+      this.mensagemErro = '⚠️ Selecione pelo menos um algoritmo.';
+      this.resultado = undefined;
+      this.dadosGantt = [];
+      this.metricasDetalhadas = [];
+      this.comparacao = [];
+      this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
+      this.kpisResumo = undefined;
+      return;
     }
 
     this.construirPaletaProcessos(base);
@@ -426,6 +434,7 @@ onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
       return;
     }
 
+    // comparação
     this.resultado = undefined;
     this.dadosGantt = [];
     this.metricasDetalhadas = [];
@@ -478,6 +487,19 @@ onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
     );
 
     const selecionados = Array.from(new Set(this.algoritmosSelecionados));
+    if (!selecionados.length) {
+      // sem algoritmo, limpa preview
+      this.resultado = undefined;
+      this.dadosGantt = [];
+      this.metricasDetalhadas = [];
+      this.comparacao = [];
+      this.resultadosMulti = {};
+      this.ganttMulti = {};
+      this.coresGanttMulti = {};
+      this.kpisResumo = undefined;
+      return;
+    }
+
     const q = Number(this.formularioConfig.value.quantum ?? 2);
 
     const opts = {

@@ -79,11 +79,13 @@
   gap: 8px;
 }
 
-@media (max-width:1100px) {
+/* Mantém 2 colunas até 900px; só empilha abaixo disso */
+@media (max-width:900px) {
   .layout {
     grid-template-columns: 1fr;
   }
 }
+
 
 .va-panel {
   background: #fff;
