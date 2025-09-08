@@ -299,7 +299,29 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   onAbaDireitaChange(idx: number) { this.abaDireitaIndex = idx; }
   abrirSelecao(modo: 'editar' | 'remover') { this.selecaoModo = modo; this.abaDireitaIndex = 1; }
-  voltarParaSimulacao() { this.selecaoModo = null; this.abaDireitaIndex = 0; }
+async voltarParaSimulacao() {
+  this.limparMensagem();
+
+  this.selecaoModo = null;
+  this.abaDireitaIndex = 0;
+  this.mostrarForm = false;
+  this.editingId = null;
+  this.originalIdEmEdicao = null;
+
+  if (!this.processos().length) {
+    this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
+    await this.router.navigate(['/adicionar']);
+    return;
+  }
+  this.ensureAlgoritmosSelecionados();
+
+  await this.router.navigate(
+    ['/simular'],
+    { queryParams: { run: '1', t: Date.now() }, queryParamsHandling: 'merge' }
+  );
+
+  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+}
 
   setModo(m: 'lecture' | 'exploration') {
     this.router.navigate([m === 'lecture' ? '/aula' : '/simular']);
@@ -361,13 +383,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 adicionarDock() {
   this.limparMensagem();
 
-  // SE já estou em /adicionar, apenas tenta salvar o processo atual
   if (this.modo === 'exploration' && this.page === 'add') {
     this.adicionar();
     return;
   }
 
-  // SENÃO: prepara o formulário e navega para /adicionar
   this.editingId = null;
   this.originalIdEmEdicao = null;
 
@@ -385,8 +405,6 @@ adicionarDock() {
 
   this.router.navigate(['/adicionar']);
 }
-
-
 
   adicionar() {
     if (this.formularioProcesso.invalid) {
@@ -512,7 +530,7 @@ adicionarDock() {
     this.cancelarEdicao();
     this.voltarParaSimulacao();
   }
-  
+
 limpar() {
   this.processos.set([]);
   this.persistProcessos();
