@@ -515,15 +515,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.voltarParaSimulacao();
   }
 
-  private rolarParaResultados() {
-    setTimeout(() => {
-      if (this.resultTop?.nativeElement) {
-        this.resultTop.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    });
-  }
+private rolarParaResultados() {
+  setTimeout(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, 100); 
+}
 
   private ensureAlgoritmosSelecionados(): void {
     let algos = this.algoritmosSelecionados;
