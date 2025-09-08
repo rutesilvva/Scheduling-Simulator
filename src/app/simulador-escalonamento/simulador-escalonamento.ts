@@ -484,7 +484,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.paletaProcessos = {};
     this.kpisResumo = undefined;
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
-    this.persistAlgoritmos(); // limpa algos salvos
+    this.persistAlgoritmos(); 
     this.ultimaSelecaoAlgoritmos = [];
     this.preferirConfig = false;
     this.voltarParaSimulacao();
@@ -498,6 +498,18 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     });
+  }
+
+  private ensureAlgoritmosSelecionados(): void {
+    let algos = this.algoritmosSelecionados;
+    if (!algos.length) {
+      const fallback: Algoritmo[] =
+        (this.ultimaSelecaoAlgoritmos && this.ultimaSelecaoAlgoritmos.length)
+          ? [...this.ultimaSelecaoAlgoritmos] as Algoritmo[]
+          : (['FCFS'] as Algoritmo[]);
+      this.formularioConfig.controls.algoritmo.setValue(fallback, { emitEvent: false });
+      this.persistAlgoritmos();
+    }
   }
 
   simular() {
@@ -521,21 +533,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         return;
       }
 
-      const selecionados = Array.from(new Set(this.algoritmosSelecionados)) as Algoritmo[];
-      if (!selecionados.length) {
-        this.mensagemErro = '⚠️ Selecione pelo menos um algoritmo.';
-        this.resultado = undefined;
-        this.dadosGantt = [];
-        this.metricasDetalhadas = [];
-        this.comparacao = [];
-        this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
-        this.kpisResumo = undefined;
-        this.preferirConfig = true;
-        this.abaDireitaIndex = 0;
-        if (this.page !== 'simulate') this.router.navigate(['/simular']);
-        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
-        return;
-      }
+      this.ensureAlgoritmosSelecionados();
+
+      let selecionados = Array.from(new Set(this.algoritmosSelecionados)) as Algoritmo[];
 
       this.construirPaletaProcessos(base);
 
@@ -588,8 +588,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         this.rolarParaResultados();
         return;
       }
-
-      // multi
       this.resultado = undefined;
       this.dadosGantt = [];
       this.metricasDetalhadas = [];
@@ -629,7 +627,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     } catch (err: any) {
       console.error('Falha geral em simular()', err);
       this.mensagemErro = `Erro ao simular: ${err?.message || err}`;
-      // deixa a UI no estado de "config primeiro"
       this.preferirConfig = true;
       this.abaDireitaIndex = 0;
     }
@@ -733,7 +730,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       case 'STRIDE':     return this.svc.simularStride(lista, opts.stride);
       case 'FAIR':       return this.svc.simularFairShare(lista, opts.fair);
       case 'CFS':        return this.svc.simularCFS(lista, opts.cfs);
-
       case 'HRRN':             return this.svc.simularHRRN(lista);
       case 'PRIORIDADE_AGING': return this.svc.simularPrioridadeAging(lista, opts.aging);
       case 'MLQ':              return this.svc.simularMLQ(lista, opts.mlq);
@@ -866,7 +862,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
 
   editarDock() {
-  
     if (!(this.modo === 'exploration' && this.page === 'edit')) {
       this.router.navigate(['/editar']);
       return;
@@ -890,6 +885,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     return new Promise(res => setTimeout(res, 0));
   }
 
+
   async simularDock() {
     if (!this.processos().length) {
       this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
@@ -897,17 +893,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       return;
     }
 
-    if (!this.algoritmosSelecionados.length) {
-      this.mensagemErro = '⚠️ Selecione pelo menos um algoritmo.';
-      this.preferirConfig = true;
-      this.abaDireitaIndex = 0;
-      if (this.router.url !== '/simular') {
-        await this.router.navigate(['/simular']);
-      }
-      await this.nextTick();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
+    this.ensureAlgoritmosSelecionados();
 
     this.editingId = null;
     this.originalIdEmEdicao = null;
@@ -929,7 +915,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       });
     }
 
-    // 4) agora simula
     this.simular();
   }
 }
