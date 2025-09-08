@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit, ViewChild, ElementRef } from '@angular/core'; 
+import { Component, signal, inject, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
@@ -17,10 +17,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { NgxChartsModule, Color, ScaleType } from '@swimlane/ngx-charts';
-import { RouterModule, ActivatedRoute, Router } from '@angular/router';
+import { RouterModule, ActivatedRoute, Router, NavigationEnd } from '@angular/router';
 import { EscalonamentoService } from '../escalonamento.service';
 import { Processo } from '../models/processo';
 import { ResultadoSimulacao } from '../models/resultado-simulacao';
+import { filter } from 'rxjs/operators';
 
 type Algoritmo =
   | 'FCFS' | 'SJF' | 'SRTF' | 'RR' | 'PRIORIDADE'
@@ -77,7 +78,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   editingId: string | null = null;
   private originalIdEmEdicao: string | null = null;
 
-  abaDireitaIndex = 0; 
+  abaDireitaIndex = 0;
   selecaoModo: 'editar' | 'remover' | null = null;
 
   private ultimaSelecaoAlgoritmos: Algoritmo[] = [];
@@ -201,12 +202,25 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     } catch {}
   }
 
+  private syncPageFromUrl(url: string) {
+    if (url.startsWith('/aula')) {
+      this.modo = 'lecture';
+      this.page = 'home';
+      return;
+    }
+    this.modo = 'exploration';
+    if (url.startsWith('/adicionar')) this.page = 'add';
+    else if (url.startsWith('/editar')) this.page = 'edit';
+    else if (url.startsWith('/simular')) this.page = 'simulate';
+    else this.page = 'home';
+  }
+
   ngOnInit(): void {
     this.hydrateFromStorage();
 
     this.route.data.subscribe(d => {
-      this.modo = (d?.['mode'] as any) || 'lecture';
-      this.page = (d?.['page'] as any) || 'home';
+      this.modo = (d?.['mode'] as any) || this.modo;
+      this.page = (d?.['page'] as any) || this.page;
 
       if (this.modo !== 'exploration') return;
 
@@ -219,12 +233,23 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         this.mostrarForm = false;
         this.selecaoModo = null;
         this.abaDireitaIndex = 0;
-        this.editingId = null;                 
-        this.originalIdEmEdicao = null;        
+        this.editingId = null;
+        this.originalIdEmEdicao = null;
       } else {
         this.selecaoModo = null;
         this.abaDireitaIndex = 0;
         this.mostrarForm = !this.temResultados && !this.processos().length;
+      }
+    });
+
+    this.syncPageFromUrl(this.router.url);
+    this.router.events
+      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .subscribe(e => this.syncPageFromUrl(e.urlAfterRedirects));
+
+    this.route.queryParamMap.subscribe(params => {
+      if (params.get('run') === '1') {
+        Promise.resolve().then(() => this.simular());
       }
     });
 
@@ -283,7 +308,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
     this.formularioConfig.controls.algoritmo.setValue(novo as Algoritmo[], { emitEvent: false });
     this.ultimaSelecaoAlgoritmos = [...(novo as Algoritmo[])];
-    this.persistAlgoritmos(); 
+    this.persistAlgoritmos();
 
     if (this.jaSimulou) {
       if (this.editingId && this.formularioConfig.value.preview) this.atualizarPreviewEdicao();
@@ -365,7 +390,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     }
 
     this.processos.update(arr => [...arr, p]);
-    this.persistProcessos(); 
+    this.persistProcessos();
 
     this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
     this.ultimaSelecaoAlgoritmos = [...this.algoritmosSelecionados];
@@ -414,7 +439,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     if (conflita) { this.mensagemErro = '⚠️ Já existe um processo com esse ID.'; return; }
 
     this.processos.update(arr => arr.map(p => p.id === this.originalIdEmEdicao ? atualizado : p));
-    this.persistProcessos(); 
+    this.persistProcessos();
 
     this.cancelarEdicao();
     if (this.jaSimulou) this.simular();
@@ -434,7 +459,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   remover(id: string) {
     if (this.editingId === id) this.cancelarEdicao();
     this.processos.update(arr => arr.filter(p => p.id !== id));
-    this.persistProcessos(); 
+    this.persistProcessos();
     if (this.processos().length) this.limparMensagem();
     if (this.jaSimulou) this.simular();
   }
@@ -457,7 +482,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.mostrarForm = false;
     this.preferirConfig = false;
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
-    this.persistAlgoritmos(); 
+    this.persistAlgoritmos();
     this.ultimaSelecaoAlgoritmos = [];
     this.cancelarEdicao();
     this.voltarParaSimulacao();
@@ -465,7 +490,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   limpar() {
     this.processos.set([]);
-    this.persistProcessos(); 
+    this.persistProcessos();
 
     this.resultado = undefined;
     this.dadosGantt = [];
@@ -484,7 +509,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.paletaProcessos = {};
     this.kpisResumo = undefined;
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
-    this.persistAlgoritmos(); 
+    this.persistAlgoritmos();
     this.ultimaSelecaoAlgoritmos = [];
     this.preferirConfig = false;
     this.voltarParaSimulacao();
@@ -528,7 +553,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         this.kpisResumo = undefined;
         this.preferirConfig = true;
         this.abaDireitaIndex = 0;
-        if (this.page !== 'simulate') this.router.navigate(['/simular']);
         setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
         return;
       }
@@ -584,10 +608,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         this.comparacaoConfirmada = [];
         this.dadosGanttConfirmado = JSON.parse(JSON.stringify(this.dadosGantt));
 
-        if (this.page !== 'simulate') this.router.navigate(['/simular']);
         this.rolarParaResultados();
         return;
       }
+
+      // multi
       this.resultado = undefined;
       this.dadosGantt = [];
       this.metricasDetalhadas = [];
@@ -622,7 +647,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.comparacaoConfirmada = this.comparacao.map(c => ({ ...c }));
       this.dadosGanttConfirmado = [];
 
-      if (this.page !== 'simulate') this.router.navigate(['/simular']);
       this.rolarParaResultados();
     } catch (err: any) {
       console.error('Falha geral em simular()', err);
@@ -881,12 +905,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.abrirSelecao('remover');
   }
 
-  private nextTick(): Promise<void> {
-    return new Promise(res => setTimeout(res, 0));
-  }
-
-
   async simularDock() {
+    this.limparMensagem();
+
     if (!this.processos().length) {
       this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
       await this.router.navigate(['/adicionar']);
@@ -894,27 +915,12 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     }
 
     this.ensureAlgoritmosSelecionados();
-
     this.editingId = null;
     this.originalIdEmEdicao = null;
 
-    const needsNavigation = this.router.url !== '/simular';
-    if (needsNavigation) {
-      await this.router.navigate(['/simular']);
-      await this.nextTick();
-
-      await new Promise<void>((resolve) => {
-        const checkRoute = () => {
-          if (this.page === 'simulate') {
-            resolve();
-          } else {
-            setTimeout(checkRoute, 10);
-          }
-        };
-        checkRoute();
-      });
-    }
-
-    this.simular();
+    await this.router.navigate(
+      ['/simular'],
+      { queryParams: { run: '1', t: Date.now() }, queryParamsHandling: 'merge' }
+    );
   }
 }

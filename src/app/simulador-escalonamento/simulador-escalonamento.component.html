@@ -435,8 +435,11 @@
       <button class="dock-item" type="button" (click)="adicionarDock()">Adicionar</button>
       <button class="dock-item" type="button" (click)="editarDock()" [disabled]="!processos().length">Editar</button>
       <button class="dock-item" type="button" (click)="removerDock()" [disabled]="!processos().length">Remover</button>
-      <button class="dock-item primary"type="button"(click)="simularDock()">Simular
+      <!-- antes: class="dock-item primary"type="button"(click)="simularDock()" -->
+<button class="dock-item primary" type="button" (click)="simularDock()">
+  Simular
 </button>
+
       <button class="dock-item" type="button" (click)="preencherExemplo()">Exemplo</button>
       <button class="dock-item warn" type="button" (click)="limpar()">Limpar</button>
 
