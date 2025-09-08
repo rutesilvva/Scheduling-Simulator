@@ -444,28 +444,32 @@ adicionarDock() {
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
   }
 
-  editar(p: Processo) {
-    this.mostrarForm = true;
-    this.preferirConfig = true;
-    this.formularioProcesso.setValue({
-      id: p.id,
-      tempoChegada: p.tempoChegada,
-      duracao: p.duracao,
-      prioridade: p.prioridade ?? 1
-    });
-    this.editingId = p.id;
-    this.originalIdEmEdicao = p.id;
+editar(p: Processo) {
+  this.mostrarForm = true;
+  this.preferirConfig = true;
 
-    if (!this.algoritmosSelecionados.length && this.ultimaSelecaoAlgoritmos.length) {
-      this.formularioConfig.controls.algoritmo.setValue(
-        [...this.ultimaSelecaoAlgoritmos] as Algoritmo[],
-        { emitEvent: false }
-      );
-    }
+  this.formularioProcesso.setValue({
+    id: p.id,
+    tempoChegada: p.tempoChegada,
+    duracao: p.duracao,
+    prioridade: p.prioridade ?? 1
+  });
 
-    this.limparMensagem();
-    this.voltarParaSimulacao();
+  this.editingId = p.id;
+  this.originalIdEmEdicao = p.id;
+
+  if (!this.algoritmosSelecionados.length && this.ultimaSelecaoAlgoritmos.length) {
+    this.formularioConfig.controls.algoritmo.setValue(
+      [...this.ultimaSelecaoAlgoritmos] as Algoritmo[], { emitEvent: false }
+    );
   }
+
+  this.limparMensagem();
+
+  this.selecaoModo = null;   
+  this.abaDireitaIndex = 0;  
+  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+}
 
   salvarEdicao() {
     if (this.formularioProcesso.invalid || !this.originalIdEmEdicao) return;
