@@ -7,9 +7,9 @@
 }
 
 .app-toolbar {
-  position: sticky;
-  top: 0;
   z-index: 10;
+  top: 0;
+  position: sticky;
 }
 
 .toolbar-left .titulo {
@@ -79,13 +79,11 @@
   gap: 8px;
 }
 
-/* Mantém 2 colunas até 900px; só empilha abaixo disso */
 @media (max-width:900px) {
   .layout {
     grid-template-columns: 1fr;
   }
 }
-
 
 .va-panel {
   background: #fff;
@@ -433,7 +431,6 @@ form.va-panel {
 .action-dock {
   position: fixed;
   left: 0;
-  top: auto;
   bottom: 25px;
   z-index: 1300;
   display: flex;
@@ -561,12 +558,6 @@ form.va-panel {
   width: 100% !important;
 }
 
-button + button,
-.va-btn + .va-btn,
-.mat-mdc-button-base + .mat-mdc-button-base {
-  margin-left: 10px;
-}
-
 .player-right .va-btn + .va-btn {
   margin-left: 12px;
 }
@@ -575,8 +566,58 @@ button + button,
   margin-left: 12px;
 }
 
-.chart-toggle{
+.chart-toggle {
   display: inline-flex;
-  gap: 8px;                   
+  gap: 8px;
 }
 
+.right-tabs .mat-mdc-tab-body-content {
+  overflow: visible;
+}
+
+.lista-proc {
+  display: grid;
+  gap: 8px;
+}
+
+.proc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.proc-item:hover {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.proc-id {
+  font-weight: 700;
+  font-size: 1rem;
+  width: 48px;
+}
+
+.proc-meta {
+  flex: 1 1 auto;
+  font-size: .86rem;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proc-action {
+  margin-left: auto;
+  min-width: 72px;
+  text-align: right;
+  font-size: .86rem;
+  font-weight: 600;
+  color: #b45309;
+}

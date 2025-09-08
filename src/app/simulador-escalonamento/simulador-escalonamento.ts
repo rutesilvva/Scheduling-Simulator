@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, signal, inject, OnInit, ViewChild, ElementRef } from '@angular/core'; 
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
@@ -17,13 +17,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { NgxChartsModule, Color, ScaleType } from '@swimlane/ngx-charts';
+import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { EscalonamentoService } from '../escalonamento.service';
 import { Processo } from '../models/processo';
 import { ResultadoSimulacao } from '../models/resultado-simulacao';
 
 type Algoritmo =
   | 'FCFS' | 'SJF' | 'SRTF' | 'RR' | 'PRIORIDADE'
-  | 'MLFQ' | 'LOTTERY' | 'STRIDE' | 'FAIR' | 'CFS';
+  | 'MLFQ' | 'LOTTERY' | 'STRIDE' | 'FAIR' | 'CFS'
+  | 'HRRN' | 'PRIORIDADE_AGING' | 'MLQ' | 'RM' | 'DM';
 
 type ResultadoComparacao = {
   algoritmo: Algoritmo;
@@ -37,24 +39,12 @@ type ResultadoComparacao = {
   selector: 'app-simulador-escalonamento',
   standalone: true,
   imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    FormsModule,
-    MatFormFieldModule,
-    MatInputModule,
-    MatButtonModule,
-    MatSelectModule,
-    MatIconModule,
-    MatTableModule,
-    MatChipsModule,
-    MatSlideToggleModule,
-    MatToolbarModule,
-    MatTabsModule,
-    MatDividerModule,
-    MatTooltipModule,
-    MatProgressBarModule,
-    MatButtonToggleModule,
-    NgxChartsModule,
+    CommonModule, ReactiveFormsModule, FormsModule,
+    MatFormFieldModule, MatInputModule, MatButtonModule, MatSelectModule,
+    MatIconModule, MatTableModule, MatChipsModule, MatSlideToggleModule,
+    MatToolbarModule, MatTabsModule, MatDividerModule, MatTooltipModule,
+    MatProgressBarModule, MatButtonToggleModule, NgxChartsModule,
+    RouterModule,
   ],
   templateUrl: './simulador-escalonamento.component.html',
   styleUrls: ['./simulador-escalonamento.component.css']
@@ -67,10 +57,13 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   listaAlgoritmos: Algoritmo[] = [
     'FCFS','SJF','SRTF','RR','PRIORIDADE',
-    'MLFQ','LOTTERY','STRIDE','FAIR','CFS'
+    'MLFQ','LOTTERY','STRIDE','FAIR','CFS',
+    'HRRN','PRIORIDADE_AGING','MLQ','RM','DM'
   ];
 
   modo: 'lecture' | 'exploration' = 'lecture';
+  page: 'home' | 'add' | 'edit' | 'simulate' = 'home';
+
   tocando = false;
   passoAtual = 0;
   velocidade = 1.0;
@@ -84,16 +77,23 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   editingId: string | null = null;
   private originalIdEmEdicao: string | null = null;
 
+  abaDireitaIndex = 0; 
+  selecaoModo: 'editar' | 'remover' | null = null;
+
+  private ultimaSelecaoAlgoritmos: Algoritmo[] = [];
+
+  preferirConfig = false;
+
   formularioProcesso = this.fb.group({
     id: ['', Validators.required],
     tempoChegada: [0, [Validators.required, Validators.min(0)]],
     duracao: [1, [Validators.required, Validators.min(1)]],
-    prioridade: [1]
+    prioridade: [1, [Validators.required, Validators.min(1)]],
   });
 
-  // >>> NÃO começa com nenhum algoritmo selecionado
   formularioConfig = this.fb.group({
-    algoritmo: [[] as Algoritmo[]], // sem default; deixei sem Validators.required para não poluir o estado do form
+    algoritmo: [[] as Algoritmo[]],
+
     quantum: [2, [Validators.min(1)]],
     mlfqNiveis: [3, [Validators.min(1)]],
     mlfqQuantumBase: [2, [Validators.min(1)]],
@@ -102,7 +102,15 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     strideTicketsPadrao: [100, [Validators.min(1)]],
     fairSharePadrao: [1, [Validators.min(1)]],
     cfsNicePadrao: [0],
-    preview: [false]
+    preview: [false],
+
+    agingRate: [0.1],
+    mlqPoliticaFG: ['RR'],
+    mlqQuantumFG: [2, [Validators.min(1)]],
+    mlqPoliticaBG: ['FCFS'],
+    mlqQuantumBG: [4, [Validators.min(1)]],
+    rmPeriodPadrao: [10, [Validators.min(1)]],
+    dmDeadlinePadrao: [10, [Validators.min(1)]],
   });
 
   get algoritmosSelecionados(): Algoritmo[] {
@@ -110,7 +118,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
   get jaSimulou(): boolean { return !!this.resultado || this.comparacao.length > 0; }
   get temResultados(): boolean { return this.jaSimulou; }
-  get isComparacaoAtiva(): boolean { return !this.resultado && this.comparacao.length > 0; }
+
+  get isComparacaoAtiva(): boolean {
+    const podeMostrar = this.page === 'home' || this.page === 'simulate';
+    return podeMostrar && !this.resultado && this.comparacao.length > 0;
+  }
 
   resultado?: ResultadoSimulacao;
   dadosGantt: any[] = [];
@@ -162,11 +174,60 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   toggleActionDock() { this.actionDockOpen = !this.actionDockOpen; }
   get canAdd(): boolean { return !this.editingId && this.formularioProcesso.valid; }
   get canSave(): boolean { return !!this.editingId && this.formularioProcesso.valid; }
-  get doisProcessos(): boolean { return this.processos().length === 2; }
 
-  constructor(private svc: EscalonamentoService) {}
+  constructor(
+    private svc: EscalonamentoService,
+    private route: ActivatedRoute,
+    private router: Router
+  ) {}
+
+  private persistProcessos() {
+    try { localStorage.setItem('sim.processos', JSON.stringify(this.processos())); } catch {}
+  }
+  private persistAlgoritmos() {
+    try { localStorage.setItem('sim.algoritmos', JSON.stringify(this.algoritmosSelecionados)); } catch {}
+  }
+  private hydrateFromStorage() {
+    try {
+      const rawP = localStorage.getItem('sim.processos');
+      if (rawP) this.processos.set(JSON.parse(rawP));
+
+      const rawA = localStorage.getItem('sim.algoritmos');
+      if (rawA) {
+        const algos = JSON.parse(rawA) as Algoritmo[];
+        this.formularioConfig.controls.algoritmo.setValue(algos as any, { emitEvent: false });
+        this.ultimaSelecaoAlgoritmos = [...algos];
+      }
+    } catch {}
+  }
 
   ngOnInit(): void {
+    this.hydrateFromStorage();
+
+    this.route.data.subscribe(d => {
+      this.modo = (d?.['mode'] as any) || 'lecture';
+      this.page = (d?.['page'] as any) || 'home';
+
+      if (this.modo !== 'exploration') return;
+
+      if (this.page === 'add') {
+        this.entrarEmAdicionar();
+      } else if (this.page === 'edit') {
+        this.entrarEmEditar();
+      } else if (this.page === 'simulate') {
+        this.preferirConfig = false;
+        this.mostrarForm = false;
+        this.selecaoModo = null;
+        this.abaDireitaIndex = 0;
+        this.editingId = null;                 
+        this.originalIdEmEdicao = null;        
+      } else {
+        this.selecaoModo = null;
+        this.abaDireitaIndex = 0;
+        this.mostrarForm = !this.temResultados && !this.processos().length;
+      }
+    });
+
     this.formularioProcesso.valueChanges.subscribe(() => {
       this.limparMensagem();
       if (this.editingId && this.jaSimulou && this.formularioConfig.value.preview) {
@@ -182,28 +243,51 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     });
   }
 
+  private entrarEmAdicionar() {
+    this.preferirConfig = true;
+    this.mostrarForm = true;
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+
+    this.resultado = undefined;
+    this.dadosGantt = [];
+    this.comparacao = [];
+    this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
+    this.resultadosMulti = {};
+    this.ganttMulti = {};
+    this.coresGanttMulti = {};
+
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+  }
+
+  private entrarEmEditar() {
+    this.preferirConfig = true;
+    this.mostrarForm = false;
+    this.selecaoModo = 'editar';
+    this.abaDireitaIndex = 1;
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+  }
+
+  onAbaDireitaChange(idx: number) { this.abaDireitaIndex = idx; }
+  abrirSelecao(modo: 'editar' | 'remover') { this.selecaoModo = modo; this.abaDireitaIndex = 1; }
+  voltarParaSimulacao() { this.selecaoModo = null; this.abaDireitaIndex = 0; }
+
   setModo(m: 'lecture' | 'exploration') {
-    this.modo = m;
-    if (m === 'exploration' && !this.processos().length && !this.temResultados) {
-      this.mostrarForm = true;
-    }
+    this.router.navigate([m === 'lecture' ? '/aula' : '/simular']);
   }
 
   onToggleAlgoritmo(algo: Algoritmo, ev: Event) {
     const checked = (ev.target as HTMLInputElement).checked;
     const atual = [...this.algoritmosSelecionados];
-    const novo = checked
-      ? (atual.includes(algo) ? atual : [...atual, algo])
-      : atual.filter(a => a !== algo);
+    const novo = checked ? (atual.includes(algo) ? atual : [...atual, algo]) : atual.filter(a => a !== algo);
 
     this.formularioConfig.controls.algoritmo.setValue(novo as Algoritmo[], { emitEvent: false });
+    this.ultimaSelecaoAlgoritmos = [...(novo as Algoritmo[])];
+    this.persistAlgoritmos(); 
 
     if (this.jaSimulou) {
-      if (this.editingId && this.formularioConfig.value.preview) {
-        this.atualizarPreviewEdicao();
-      } else {
-        this.simular();
-      }
+      if (this.editingId && this.formularioConfig.value.preview) this.atualizarPreviewEdicao();
+      else this.simular();
     }
   }
 
@@ -226,21 +310,46 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   limparMensagem() { this.mensagemErro = null; }
 
+  private irParaNovoProcesso(): void {
+    this.page = 'add';
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+    this.mostrarForm = true;
+    this.editingId = null;
+    this.originalIdEmEdicao = null;
+    this.preferirConfig = true;
+
+    this.formularioProcesso.reset({
+      id: '',
+      tempoChegada: 0,
+      duracao: 1,
+      prioridade: 1
+    });
+
+    this.limparMensagem();
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+  }
+
   adicionarDock() {
-    if (!this.mostrarForm) {
-      this.mostrarForm = true;
-      this.editingId = null;
-      this.originalIdEmEdicao = null;
-      // abre formulário limpo E zera seleção de algoritmos
-      this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
-      this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
+    if (!(this.modo === 'exploration' && this.page === 'add')) {
+      this.router.navigate(['/adicionar']);
       return;
     }
-    if (!this.editingId) this.adicionar();
+    this.adicionar();
   }
 
   adicionar() {
-    if (this.formularioProcesso.invalid) return;
+    if (this.formularioProcesso.invalid) {
+      this.mensagemErro = 'Preencha todos os campos do processo.';
+      this.formularioProcesso.markAllAsTouched();
+      return;
+    }
+
+    if (!this.algoritmosSelecionados.length) {
+      this.mensagemErro = 'Selecione pelo menos um algoritmo.';
+      return;
+    }
+
     const raw = this.formularioProcesso.getRawValue();
     const p: Processo = {
       id: String(raw.id).trim(),
@@ -248,18 +357,28 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       duracao: Number(raw.duracao),
       prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
     };
+
     if (!p.id) return;
     if (this.processos().some(x => x.id === p.id)) {
       this.mensagemErro = '⚠️ ID já existe.';
       return;
     }
+
     this.processos.update(arr => [...arr, p]);
+    this.persistProcessos(); 
+
     this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
+    this.ultimaSelecaoAlgoritmos = [...this.algoritmosSelecionados];
     this.limparMensagem();
+  }
+
+  private limparAlgoritmos() {
+    this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
   }
 
   editar(p: Processo) {
     this.mostrarForm = true;
+    this.preferirConfig = true;
     this.formularioProcesso.setValue({
       id: p.id,
       tempoChegada: p.tempoChegada,
@@ -268,7 +387,16 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     });
     this.editingId = p.id;
     this.originalIdEmEdicao = p.id;
+
+    if (!this.algoritmosSelecionados.length && this.ultimaSelecaoAlgoritmos.length) {
+      this.formularioConfig.controls.algoritmo.setValue(
+        [...this.ultimaSelecaoAlgoritmos] as Algoritmo[],
+        { emitEvent: false }
+      );
+    }
+
     this.limparMensagem();
+    this.voltarParaSimulacao();
   }
 
   salvarEdicao() {
@@ -286,6 +414,8 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     if (conflita) { this.mensagemErro = '⚠️ Já existe um processo com esse ID.'; return; }
 
     this.processos.update(arr => arr.map(p => p.id === this.originalIdEmEdicao ? atualizado : p));
+    this.persistProcessos(); 
+
     this.cancelarEdicao();
     if (this.jaSimulou) this.simular();
   }
@@ -304,17 +434,20 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   remover(id: string) {
     if (this.editingId === id) this.cancelarEdicao();
     this.processos.update(arr => arr.filter(p => p.id !== id));
+    this.persistProcessos(); 
     if (this.processos().length) this.limparMensagem();
     if (this.jaSimulou) this.simular();
   }
 
   preencherExemplo() {
     this.processos.set([
-      { id: 'P1', tempoChegada: 0, duracao: 8, prioridade: 2 },
-      { id: 'P2', tempoChegada: 1, duracao: 4, prioridade: 1 },
-      { id: 'P3', tempoChegada: 2, duracao: 9, prioridade: 3 },
+      { id: 'P1', tempoChegada: 0, duracao: 8, prioridade: 3 },
+      { id: 'P2', tempoChegada: 1, duracao: 4, prioridade: 2 },
+      { id: 'P3', tempoChegada: 2, duracao: 9, prioridade: 1 },
       { id: 'P4', tempoChegada: 3, duracao: 5, prioridade: 2 },
     ]);
+    this.persistProcessos();
+
     this.resultado = undefined;
     this.dadosGantt = [];
     this.metricasDetalhadas = [];
@@ -322,13 +455,18 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
     this.mensagemErro = null;
     this.mostrarForm = false;
-    // garante que não herde seleção
+    this.preferirConfig = false;
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
+    this.persistAlgoritmos(); 
+    this.ultimaSelecaoAlgoritmos = [];
     this.cancelarEdicao();
+    this.voltarParaSimulacao();
   }
 
   limpar() {
     this.processos.set([]);
+    this.persistProcessos(); 
+
     this.resultado = undefined;
     this.dadosGantt = [];
     this.metricasDetalhadas = [];
@@ -345,8 +483,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.coresGanttMulti = {};
     this.paletaProcessos = {};
     this.kpisResumo = undefined;
-    // zera seleção de algoritmos
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
+    this.persistAlgoritmos(); // limpa algos salvos
+    this.ultimaSelecaoAlgoritmos = [];
+    this.preferirConfig = false;
+    this.voltarParaSimulacao();
   }
 
   private rolarParaResultados() {
@@ -360,115 +501,138 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
 
   simular() {
-    this.mostrarForm = false;
+    try {
+      this.preferirConfig = false;
+      this.mostrarForm = false;
 
-    const base = this.processos();
-    if (!base.length) {
-      this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
-      this.resultado = undefined;
-      this.dadosGantt = [];
-      this.metricasDetalhadas = [];
-      this.comparacao = [];
-      this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
-      this.kpisResumo = undefined;
-      return;
-    }
-
-    const selecionados = Array.from(new Set(this.algoritmosSelecionados));
-    if (!selecionados.length) {
-      this.mensagemErro = '⚠️ Selecione pelo menos um algoritmo.';
-      this.resultado = undefined;
-      this.dadosGantt = [];
-      this.metricasDetalhadas = [];
-      this.comparacao = [];
-      this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
-      this.kpisResumo = undefined;
-      return;
-    }
-
-    this.construirPaletaProcessos(base);
-
-    this.mensagemErro = null;
-    this.comparacao = [];
-    this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
-
-    this.resultadosMulti = {};
-    this.ganttMulti = {};
-    this.coresGanttMulti = {};
-
-    const q = Number(this.formularioConfig.value.quantum ?? 2);
-
-    const opts = {
-      mlfq: {
-        niveis: Number(this.formularioConfig.value.mlfqNiveis ?? 3),
-        quantumBase: Number(this.formularioConfig.value.mlfqQuantumBase ?? 2),
-        boost: Number(this.formularioConfig.value.mlfqBoost ?? 50),
-      },
-      lottery: { ticketsPadrao: Number(this.formularioConfig.value.lotteryTicketsPadrao ?? 100) },
-      stride:  { ticketsPadrao: Number(this.formularioConfig.value.strideTicketsPadrao ?? 100) },
-      fair:    { sharePadrao:  Number(this.formularioConfig.value.fairSharePadrao ?? 1) },
-      cfs:     { nicePadrao:   Number(this.formularioConfig.value.cfsNicePadrao ?? 0) }
-    };
-
-    if (selecionados.length === 1) {
-      const algo = selecionados[0];
-      const listaCopia: Processo[] = base.map(p => ({ ...p }));
-      try {
-        this.resultado = this.executarAlgoritmo(algo, listaCopia, q, opts);
-        const pack = this.montarGanttComCores(this.resultado!.execucoes);
-        this.dadosGantt = pack.dados;
-        this.calcularMetricasPorProcesso();
-        this.calcularKpisResumo(listaCopia, this.resultado!.execucoes);
-        this.resultadoConfirmado = JSON.parse(JSON.stringify(this.resultado));
-        this.comparacaoConfirmada = [];
-        this.dadosGanttConfirmado = JSON.parse(JSON.stringify(this.dadosGantt));
-      } catch (e) {
-        console.error(`[${algo}] falhou`, e);
+      const base = this.processos();
+      if (!base.length) {
+        this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
         this.resultado = undefined;
         this.dadosGantt = [];
         this.metricasDetalhadas = [];
+        this.comparacao = [];
+        this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
         this.kpisResumo = undefined;
-        this.mensagemErro = `Falha ao simular ${algo}.`;
+        this.preferirConfig = true;
+        this.abaDireitaIndex = 0;
+        if (this.page !== 'simulate') this.router.navigate(['/simular']);
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+        return;
       }
-      this.rolarParaResultados();
-      return;
-    }
 
-    // comparação
-    this.resultado = undefined;
-    this.dadosGantt = [];
-    this.metricasDetalhadas = [];
-    this.kpisResumo = undefined;
+      const selecionados = Array.from(new Set(this.algoritmosSelecionados)) as Algoritmo[];
+      if (!selecionados.length) {
+        this.mensagemErro = '⚠️ Selecione pelo menos um algoritmo.';
+        this.resultado = undefined;
+        this.dadosGantt = [];
+        this.metricasDetalhadas = [];
+        this.comparacao = [];
+        this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
+        this.kpisResumo = undefined;
+        this.preferirConfig = true;
+        this.abaDireitaIndex = 0;
+        if (this.page !== 'simulate') this.router.navigate(['/simular']);
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+        return;
+      }
 
-    for (const algo of selecionados) {
-      const listaCopia: Processo[] = base.map(p => ({ ...p }));
-      try {
+      this.construirPaletaProcessos(base);
+
+      this.mensagemErro = null;
+      this.comparacao = [];
+      this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
+
+      this.resultadosMulti = {};
+      this.ganttMulti = {};
+      this.coresGanttMulti = {};
+
+      const q = Number(this.formularioConfig.value.quantum ?? 2);
+
+      const opts = {
+        mlfq: {
+          niveis: Number(this.formularioConfig.value.mlfqNiveis ?? 3),
+          quantumBase: Number(this.formularioConfig.value.mlfqQuantumBase ?? 2),
+          boost: Number(this.formularioConfig.value.mlfqBoost ?? 50),
+        },
+        lottery: { ticketsPadrao: Number(this.formularioConfig.value.lotteryTicketsPadrao ?? 100) },
+        stride:  { ticketsPadrao: Number(this.formularioConfig.value.strideTicketsPadrao ?? 100) },
+        fair:    { sharePadrao:  Number(this.formularioConfig.value.fairSharePadrao ?? 1) },
+        cfs:     { nicePadrao:   Number(this.formularioConfig.value.cfsNicePadrao ?? 0) },
+        aging:   { rate: Number(this.formularioConfig.value.agingRate ?? 0.1) },
+        mlq:     {
+          fgPolitica: String(this.formularioConfig.value.mlqPoliticaFG || 'RR'),
+          fgQuantum:  Number(this.formularioConfig.value.mlqQuantumFG ?? 2),
+          bgPolitica: String(this.formularioConfig.value.mlqPoliticaBG || 'FCFS'),
+          bgQuantum:  Number(this.formularioConfig.value.mlqQuantumBG ?? 4),
+        },
+        rm:      { periodPadrao: Number(this.formularioConfig.value.rmPeriodPadrao ?? 10) },
+        dm:      { deadlinePadrao: Number(this.formularioConfig.value.dmDeadlinePadrao ?? 10) },
+      };
+
+      if (selecionados.length === 1) {
+        const algo = selecionados[0];
+        const listaCopia: Processo[] = base.map(p => ({ ...p }));
         const r = this.executarAlgoritmo(algo, listaCopia, q, opts);
-        const justica = this.calcularJusticaPorEspera(r, listaCopia);
+        this.resultado = r;
+        const pack = this.montarGanttComCores(r.execucoes);
+        this.dadosGantt = pack.dados;
+        this.calcularMetricasPorProcesso();
+        this.calcularKpisResumo(listaCopia, r.execucoes);
 
-        this.resultadosMulti[algo] = r;
-        const { dados, custom } = this.montarGanttComCores(r.execucoes);
-        this.ganttMulti[algo] = dados;
-        this.coresGanttMulti[algo] = custom;
+        this.resultadoConfirmado = JSON.parse(JSON.stringify(this.resultado));
+        this.comparacaoConfirmada = [];
+        this.dadosGanttConfirmado = JSON.parse(JSON.stringify(this.dadosGantt));
 
-        this.comparacao.push({
-          algoritmo: algo,
-          espera: r.tempoMedioEspera,
-          retorno: r.tempoMedioRetorno,
-          resposta: r.tempoMedioResposta,
-          justica
-        });
-      } catch (e) {
-        console.error(`[${algo}] falhou`, e);
-        this.comparacao.push({ algoritmo: algo, espera: NaN, retorno: NaN, resposta: NaN, justica: NaN });
+        if (this.page !== 'simulate') this.router.navigate(['/simular']);
+        this.rolarParaResultados();
+        return;
       }
-    }
-    this.atualizarGraficosComparacao();
 
-    this.resultadoConfirmado = undefined;
-    this.comparacaoConfirmada = this.comparacao.map(c => ({ ...c }));
-    this.dadosGanttConfirmado = [];
-    this.rolarParaResultados();
+      // multi
+      this.resultado = undefined;
+      this.dadosGantt = [];
+      this.metricasDetalhadas = [];
+      this.kpisResumo = undefined;
+
+      for (const algo of selecionados) {
+        try {
+          const listaCopia: Processo[] = base.map(p => ({ ...p }));
+          const r = this.executarAlgoritmo(algo, listaCopia, q, opts);
+          const justica = this.calcularJusticaPorEspera(r, listaCopia);
+
+          this.resultadosMulti[algo] = r;
+          const { dados, custom } = this.montarGanttComCores(r.execucoes);
+          this.ganttMulti[algo] = dados;
+          this.coresGanttMulti[algo] = custom;
+
+          this.comparacao.push({
+            algoritmo: algo,
+            espera: r.tempoMedioEspera,
+            retorno: r.tempoMedioRetorno,
+            resposta: r.tempoMedioResposta,
+            justica
+          });
+        } catch (e) {
+          console.error(`[${algo}] falhou`, e);
+          this.comparacao.push({ algoritmo: algo, espera: NaN, retorno: NaN, resposta: NaN, justica: NaN });
+        }
+      }
+
+      this.atualizarGraficosComparacao();
+      this.resultadoConfirmado = undefined;
+      this.comparacaoConfirmada = this.comparacao.map(c => ({ ...c }));
+      this.dadosGanttConfirmado = [];
+
+      if (this.page !== 'simulate') this.router.navigate(['/simular']);
+      this.rolarParaResultados();
+    } catch (err: any) {
+      console.error('Falha geral em simular()', err);
+      this.mensagemErro = `Erro ao simular: ${err?.message || err}`;
+      // deixa a UI no estado de "config primeiro"
+      this.preferirConfig = true;
+      this.abaDireitaIndex = 0;
+    }
   }
 
   private atualizarPreviewEdicao() {
@@ -482,13 +646,10 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
     };
 
-    const listaPreview = this.processos().map(p =>
-      p.id === this.originalIdEmEdicao ? atualizado : p
-    );
+    const listaPreview = this.processos().map(p => p.id === this.originalIdEmEdicao ? atualizado : p);
 
     const selecionados = Array.from(new Set(this.algoritmosSelecionados));
     if (!selecionados.length) {
-      // sem algoritmo, limpa preview
       this.resultado = undefined;
       this.dadosGantt = [];
       this.metricasDetalhadas = [];
@@ -501,24 +662,30 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     }
 
     const q = Number(this.formularioConfig.value.quantum ?? 2);
-
     const opts = {
-      mlfq: { niveis: Number(this.formularioConfig.value.mlfqNiveis ?? 3),
-              quantumBase: Number(this.formularioConfig.value.mlfqQuantumBase ?? 2),
-              boost: Number(this.formularioConfig.value.mlfqBoost ?? 50) },
+      mlfq: { niveis: Number(this.formularioConfig.value.mlfqNiveis ?? 3), quantumBase: Number(this.formularioConfig.value.mlfqQuantumBase ?? 2), boost: Number(this.formularioConfig.value.mlfqBoost ?? 50) },
       lottery: { ticketsPadrao: Number(this.formularioConfig.value.lotteryTicketsPadrao ?? 100) },
       stride:  { ticketsPadrao: Number(this.formularioConfig.value.strideTicketsPadrao ?? 100) },
       fair:    { sharePadrao:  Number(this.formularioConfig.value.fairSharePadrao ?? 1) },
-      cfs:     { nicePadrao:   Number(this.formularioConfig.value.cfsNicePadrao ?? 0) }
+      cfs:     { nicePadrao:   Number(this.formularioConfig.value.cfsNicePadrao ?? 0) },
+      aging:   { rate: Number(this.formularioConfig.value.agingRate ?? 0.1) },
+      mlq:     {
+        fgPolitica: String(this.formularioConfig.value.mlqPoliticaFG || 'RR'),
+        fgQuantum:  Number(this.formularioConfig.value.mlqQuantumFG ?? 2),
+        bgPolitica: String(this.formularioConfig.value.mlqPoliticaBG || 'FCFS'),
+        bgQuantum:  Number(this.formularioConfig.value.mlqQuantumBG ?? 4),
+      },
+      rm:      { periodPadrao: Number(this.formularioConfig.value.rmPeriodPadrao ?? 10) },
+      dm:      { deadlinePadrao: Number(this.formularioConfig.value.dmDeadlinePadrao ?? 10) },
     };
 
     this.construirPaletaProcessos(listaPreview);
 
     if (selecionados.length === 1) {
-      const algo = selecionados[0];
+      const algo = selecionados[0] as Algoritmo;
       const r = this.executarAlgoritmo(algo, listaPreview.map(p => ({ ...p })), q, opts);
-      this.resultado = r;
       const pack = this.montarGanttComCores(r.execucoes);
+      this.resultado = r;
       this.dadosGantt = pack.dados;
       this.calcularMetricasPorProcesso();
       this.calcularKpisResumo(listaPreview, r.execucoes);
@@ -535,14 +702,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       for (const algo of selecionados) {
         const r = this.executarAlgoritmo(algo, listaPreview.map(p => ({ ...p })), q, opts);
         const justica = this.calcularJusticaPorEspera(r, listaPreview);
-        this.comparacao.push({
-          algoritmo: algo,
-          espera: r.tempoMedioEspera,
-          retorno: r.tempoMedioRetorno,
-          resposta: r.tempoMedioResposta,
-          justica
-        });
-
+        this.comparacao.push({ algoritmo: algo, espera: r.tempoMedioEspera, retorno: r.tempoMedioRetorno, resposta: r.tempoMedioResposta, justica });
         const { dados, custom } = this.montarGanttComCores(r.execucoes);
         this.resultadosMulti[algo] = r;
         this.ganttMulti[algo] = dados;
@@ -573,6 +733,12 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       case 'STRIDE':     return this.svc.simularStride(lista, opts.stride);
       case 'FAIR':       return this.svc.simularFairShare(lista, opts.fair);
       case 'CFS':        return this.svc.simularCFS(lista, opts.cfs);
+
+      case 'HRRN':             return this.svc.simularHRRN(lista);
+      case 'PRIORIDADE_AGING': return this.svc.simularPrioridadeAging(lista, opts.aging);
+      case 'MLQ':              return this.svc.simularMLQ(lista, opts.mlq);
+      case 'RM':               return this.svc.simularRM(lista, opts.rm);
+      case 'DM':               return this.svc.simularDM(lista, opts.dm);
     }
   }
 
@@ -601,24 +767,14 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     const ordenado = [...execs].sort((a,b)=> a.inicio - b.inicio);
     const preenchido: { processoId: string; inicio: number; fim: number }[] = [];
     let cursor = 0;
-
     for (const e of ordenado) {
       if (e.inicio > cursor) preenchido.push({ processoId: 'IDLE', inicio: cursor, fim: e.inicio });
       preenchido.push(e);
       cursor = Math.max(cursor, e.fim);
     }
-
-    const series = preenchido.map(e => ({
-      name: `${e.processoId} (${e.inicio}-${e.fim})`,
-      value: Math.max(0, e.fim - e.inicio),
-      extra: e
-    }));
+    const series = preenchido.map(e => ({ name: `${e.processoId} (${e.inicio}-${e.fim})`, value: Math.max(0, e.fim - e.inicio), extra: e }));
     const dados = [{ name: 'CPU', series }];
-
-    const custom = preenchido.map(e => ({
-      name: `${e.processoId} (${e.inicio}-${e.fim})`,
-      value: this.paletaProcessos[e.processoId] || '#888'
-    }));
+    const custom = preenchido.map(e => ({ name: `${e.processoId} (${e.inicio}-${e.fim})`, value: this.paletaProcessos[e.processoId] || '#888' }));
     return { dados, custom };
   }
 
@@ -645,18 +801,10 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     });
   }
 
-  kpisResumo?: {
-    makespan: number;
-    totalExec: number;
-    ociosidade: number;
-    utilizacaoCpu: number;
-    throughput: number;
-    ctxSwitches: number;
-  };
+  kpisResumo?: { makespan: number; totalExec: number; ociosidade: number; utilizacaoCpu: number; throughput: number; ctxSwitches: number; };
 
   private calcularKpisResumo(lista: Processo[], execs: { processoId: string; inicio: number; fim: number }[]) {
     if (!execs.length) { this.kpisResumo = undefined; return; }
-
     const chegadaMin = Math.min(...lista.map(p => p.tempoChegada));
     const fimMax = Math.max(...execs.map(e => e.fim));
     const inicioMinExec = Math.min(...execs.map(e => e.inicio));
@@ -665,20 +813,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     const ociosidade = Math.max(0, makespan - totalExec);
     const utilizacao = makespan > 0 ? totalExec / makespan : 0;
     const throughput = makespan > 0 ? lista.length / makespan : lista.length;
-
     let ctxSwitches = 0;
-    for (let i = 1; i < execs.length; i++) {
-      if (execs[i].processoId !== execs[i - 1].processoId) ctxSwitches++;
-    }
-
-    this.kpisResumo = {
-      makespan,
-      totalExec,
-      ociosidade,
-      utilizacaoCpu: +utilizacao.toFixed(3),
-      throughput: +throughput.toFixed(3),
-      ctxSwitches
-    };
+    for (let i = 1; i < execs.length; i++) if (execs[i].processoId !== execs[i - 1].processoId) ctxSwitches++;
+    this.kpisResumo = { makespan, totalExec, ociosidade, utilizacaoCpu: +utilizacao.toFixed(3), throughput: +throughput.toFixed(3), ctxSwitches };
   }
 
   private construirPaletaProcessos(processos: Processo[]) {
@@ -700,56 +837,99 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     const cores: Array<{ name: string; value: string }> = [];
     let cursor = 0;
     for (const e of ordenado) {
-      if (e.inicio > cursor) {
-        const nomeIdle = `IDLE (${cursor}-${e.inicio})`;
-        cores.push({ name: nomeIdle, value: this.paletaProcessos['IDLE'] || this.idleColor });
-      }
-      const nome = `${e.processoId} (${e.inicio}-${e.fim})`;
-      cores.push({ name: nome, value: this.paletaProcessos[e.processoId] || '#888' });
+      if (e.inicio > cursor) cores.push({ name: `IDLE (${cursor}-${e.inicio})`, value: this.paletaProcessos['IDLE'] || this.idleColor });
+      cores.push({ name: `${e.processoId} (${e.inicio}-${e.fim})`, value: this.paletaProcessos[e.processoId] || '#888' });
       cursor = Math.max(cursor, e.fim);
     }
     const h = this.highlightedName;
     return h ? cores.map(c => c.name === h ? { name: c.name, value: this.highlightColor } : c) : cores;
   }
 
-  get coresPersonalizadas(): Array<{ name: string; value: string }> {
-    return this.coresGanttUnico;
-  }
+  get coresPersonalizadas(): Array<{ name: string; value: string }> { return this.coresGanttUnico; }
 
   getJustica(algo: Algoritmo): number {
     const item = this.comparacao.find(c => c.algoritmo === algo);
     return item ? item.justica : NaN;
   }
 
-  private pickCandidato(): Processo | null {
-    const arr = this.processos();
-    if (!arr.length) return null;
-    return [...arr].sort(
-      (a, b) => a.tempoChegada - b.tempoChegada || a.id.localeCompare(b.id)
-    )[0];
+  processosOrdenados(): Processo[] {
+    return [...this.processos()].sort((a, b) => a.tempoChegada - b.tempoChegada || a.id.localeCompare(b.id));
+  }
+
+  escolherNaLista(id: string) {
+    const p = this.processos().find(x => x.id === id);
+    if (!p) { this.voltarParaSimulacao(); return; }
+    if (this.selecaoModo === 'editar') this.editar(p);
+    else if (this.selecaoModo === 'remover') this.remover(id);
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
   }
 
   editarDock() {
-    const arr = this.processos();
-    if (!arr.length) return;
-
-    if (!this.editingId) {
-      const alvo = this.pickCandidato();
-      if (alvo) this.editar(alvo);
-    } else {
+  
+    if (!(this.modo === 'exploration' && this.page === 'edit')) {
+      this.router.navigate(['/editar']);
+      return;
+    }
+    if (this.editingId) {
       if (this.formularioProcesso.valid) this.salvarEdicao();
       else this.cancelarEdicao();
+    } else {
+      this.selecaoModo = 'editar';
+      this.abaDireitaIndex = 1;
     }
   }
 
   removerDock() {
-    const arr = this.processos();
-    if (!arr.length) return;
-    if (this.editingId) {
-      this.remover(this.editingId);
+    if (!this.processos().length) return;
+    if (this.editingId) { this.remover(this.editingId); return; }
+    this.abrirSelecao('remover');
+  }
+
+  private nextTick(): Promise<void> {
+    return new Promise(res => setTimeout(res, 0));
+  }
+
+  async simularDock() {
+    if (!this.processos().length) {
+      this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
+      await this.router.navigate(['/adicionar']);
       return;
     }
-    const alvo = this.pickCandidato();
-    if (alvo) this.remover(alvo.id);
+
+    if (!this.algoritmosSelecionados.length) {
+      this.mensagemErro = '⚠️ Selecione pelo menos um algoritmo.';
+      this.preferirConfig = true;
+      this.abaDireitaIndex = 0;
+      if (this.router.url !== '/simular') {
+        await this.router.navigate(['/simular']);
+      }
+      await this.nextTick();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    this.editingId = null;
+    this.originalIdEmEdicao = null;
+
+    const needsNavigation = this.router.url !== '/simular';
+    if (needsNavigation) {
+      await this.router.navigate(['/simular']);
+      await this.nextTick();
+
+      await new Promise<void>((resolve) => {
+        const checkRoute = () => {
+          if (this.page === 'simulate') {
+            resolve();
+          } else {
+            setTimeout(checkRoute, 10);
+          }
+        };
+        checkRoute();
+      });
+    }
+
+    // 4) agora simula
+    this.simular();
   }
 }

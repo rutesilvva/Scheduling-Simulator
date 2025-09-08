@@ -3,11 +3,80 @@ import { Processo } from './models/processo';
 import { Execucao, ResultadoSimulacao } from './models/resultado-simulacao';
 
 type ProcessoRestante = Processo & { restante: number };
+type ProcessoExt = Processo & { period?: number; deadline?: number; classe?: string };
 
 @Injectable({ providedIn: 'root' })
 export class EscalonamentoService {
 
+
+
+  private vazio(): ResultadoSimulacao {
+    return { execucoes: [], tempoMedioEspera: 0, tempoMedioRetorno: 0, tempoMedioResposta: 0 };
+  }
+
+  private copia<T>(arr: T[]): T[] { return JSON.parse(JSON.stringify(arr)); }
+
+  private fundirAdjacentes(execs: Execucao[]): Execucao[] {
+    if (!execs.length) return execs;
+    const saida: Execucao[] = [];
+    let atual = { ...execs[0] };
+    for (let i = 1; i < execs.length; i++) {
+      const e = execs[i];
+      if (e.processoId === atual.processoId && e.inicio === atual.fim) {
+        atual.fim = e.fim;
+      } else {
+        saida.push(atual);
+        atual = { ...e };
+      }
+    }
+    saida.push(atual);
+    return saida;
+  }
+
+  private calcularMetricas(processos: Processo[], execucoes: Execucao[]): ResultadoSimulacao {
+    if (!processos.length) return this.vazio();
+
+    const mapa = new Map<string, { primeiroInicio: number; conclusao: number; totalExecutado: number }>();
+    for (const p of processos) {
+      mapa.set(p.id, { primeiroInicio: Number.POSITIVE_INFINITY, conclusao: 0, totalExecutado: 0 });
+    }
+
+    for (const e of execucoes) {
+      const m = mapa.get(e.processoId)!;
+      m.primeiroInicio = Math.min(m.primeiroInicio, e.inicio);
+      m.conclusao = Math.max(m.conclusao, e.fim);
+      m.totalExecutado += (e.fim - e.inicio);
+    }
+
+    const espera: number[] = [];
+    const retorno: number[] = [];
+    const resposta: number[] = [];
+
+    for (const p of processos) {
+      const m = mapa.get(p.id)!;
+      const primeiro = isFinite(m.primeiroInicio) ? m.primeiroInicio : p.tempoChegada;
+      const tat = m.conclusao - p.tempoChegada;   
+      const wt  = tat - m.totalExecutado;         
+      const rt  = primeiro - p.tempoChegada;      
+      espera.push(wt);
+      retorno.push(tat);
+      resposta.push(rt);
+    }
+
+    const media = (a: number[]) => a.reduce((x,y)=>x+y,0)/(a.length||1);
+
+    return {
+      execucoes,
+      tempoMedioEspera:   +media(espera).toFixed(2),
+      tempoMedioRetorno:  +media(retorno).toFixed(2),
+      tempoMedioResposta: +media(resposta).toFixed(2),
+    };
+  }
+
+
   simularFCFS(processos: Processo[]): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const lista = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
     let tempo = 0;
     const execucoes: Execucao[] = [];
@@ -23,6 +92,8 @@ export class EscalonamentoService {
   }
 
   simularSJF(processos: Processo[]): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const porChegada = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
     const prontos: Processo[] = [];
     const execucoes: Execucao[] = [];
@@ -43,8 +114,10 @@ export class EscalonamentoService {
   }
 
   simularSRTF(processos: Processo[]): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const porChegada = this.copia(processos)
-      .map(p=>({ ...p, restante: p.duracao }))
+      .map(p=>({ ...p, restante: p.duracao } as ProcessoRestante))
       .sort((a,b)=>a.tempoChegada-b.tempoChegada);
 
     const execucoes: Execucao[] = [];
@@ -97,10 +170,11 @@ export class EscalonamentoService {
   }
 
   simularRR(processos: Processo[], quantum: number): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
     if (quantum <= 0) throw new Error('Quantum deve ser > 0');
 
     const porChegada = this.copia(processos)
-      .map(p=>({ ...p, restante: p.duracao }))
+      .map(p=>({ ...p, restante: p.duracao } as ProcessoRestante))
       .sort((a,b)=>a.tempoChegada-b.tempoChegada);
 
     const fila: ProcessoRestante[] = [];
@@ -133,6 +207,8 @@ export class EscalonamentoService {
   }
 
   simularPrioridade(processos: Processo[]): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const porChegada = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
     const prontos: Processo[] = [];
     const execucoes: Execucao[] = [];
@@ -156,10 +232,13 @@ export class EscalonamentoService {
     return this.calcularMetricas(porChegada, execucoes);
   }
 
+
   simularMLFQ(
     processos: Processo[],
     cfg: { niveis: number; quantumBase: number; boost: number }
   ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const N = Math.max(1, (cfg.niveis|0) || 3);
     const qb = Math.max(1, (cfg.quantumBase|0) || 2);
     const boostPeriod = Math.max(1, (cfg.boost|0) || 50);
@@ -180,7 +259,7 @@ export class EscalonamentoService {
     const empurrarChegadas = () => {
       procs
         .filter(p => p.tempoChegada <= tempo && p.restante > 0 && !filas.some(f=>f.includes(p)))
-        .forEach(p => filas[0].push(p)); 
+        .forEach(p => filas[0].push(p));
     };
 
     const allDone = () => procs.every(p=>p.restante<=0);
@@ -211,7 +290,7 @@ export class EscalonamentoService {
       empurrarChegadas();
 
       if (p.restante > 0) {
-        p.nivel = Math.min(N-1, p.nivel + 1); 
+        p.nivel = Math.min(N-1, p.nivel + 1);
         filas[p.nivel].push(p);
       }
     }
@@ -219,12 +298,17 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
- 
   simularLottery(
     processos: Processo[],
-    cfg: { ticketsPadrao: number }
+    cfg: { ticketsPadrao: number; seed?: number }
   ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao|0) || 100);
+
+    let s = (cfg?.seed ?? 123456789) >>> 0;
+    const rand = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+
     type P = Processo & { restante:number; tickets:number };
 
     const base = this.copia(processos);
@@ -239,8 +323,8 @@ export class EscalonamentoService {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      const total = ready.reduce((s,p)=> s + p.tickets, 0);
-      let r = Math.random() * total;
+      const total = ready.reduce((sum,p)=> sum + p.tickets, 0);
+      let r = rand() * total; 
       let escolha = ready[0];
       for (const p of ready) { r -= p.tickets; if (r <= 0) { escolha = p; break; } }
 
@@ -252,11 +336,12 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
- 
   simularStride(
     processos: Processo[],
     cfg: { ticketsPadrao: number }
   ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao|0) || 100);
     const K = 10000;
 
@@ -291,11 +376,12 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
- 
   simularFairShare(
     processos: Processo[],
     cfg: { sharePadrao: number }
   ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
     const sharePadrao = Math.max(1, (cfg?.sharePadrao|0) || 1);
     type P = Processo & { restante:number; share:number; usado:number };
 
@@ -323,16 +409,14 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
-
   simularCFS(
     processos: Processo[],
     cfg: { nicePadrao: number }
   ): ResultadoSimulacao {
-    const nicePadrao = (cfg?.nicePadrao ?? 0) | 0;
+    if (!processos?.length) return this.vazio();
 
-    const weightFromNice = (n: number) => {
-      return Math.max(1, Math.floor(1024 / Math.pow(1.25, n)));
-    };
+    const nicePadrao = (cfg?.nicePadrao ?? 0) | 0;
+    const weightFromNice = (n: number) => Math.max(1, Math.floor(1024 / Math.pow(1.25, n)));
 
     type P = Processo & { restante:number; vruntime:number; weight:number };
     const base = this.copia(processos);
@@ -354,67 +438,229 @@ export class EscalonamentoService {
 
       execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
       cur.restante -= 1;
-      cur.vruntime += (1024 / cur.weight); 
+      cur.vruntime += (1024 / cur.weight);
       tempo += 1;
     }
 
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
-  private copia<T>(arr: T[]): T[] { return JSON.parse(JSON.stringify(arr)); }
 
-  private fundirAdjacentes(execs: Execucao[]): Execucao[] {
-    if (!execs.length) return execs;
-    const saida: Execucao[] = [];
-    let atual = { ...execs[0] };
-    for (let i = 1; i < execs.length; i++) {
-      const e = execs[i];
-      if (e.processoId === atual.processoId && e.inicio === atual.fim) {
-        atual.fim = e.fim;
-      } else {
-        saida.push(atual);
-        atual = { ...e };
-      }
+  simularHRRN(processos: Processo[]): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
+    const base = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
+    const execs: Execucao[] = [];
+    let tempo = 0;
+    let i = 0;
+    const prontos: Processo[] = [];
+
+    while (i < base.length || prontos.length) {
+      while (i < base.length && base[i].tempoChegada <= tempo) prontos.push(base[i++]);
+      if (!prontos.length) { tempo = base[i].tempoChegada; continue; }
+
+      const escolha = [...prontos]
+        .map(p => ({
+          p,
+          ratio: ((tempo - p.tempoChegada) + p.duracao) / p.duracao
+        }))
+        .sort((a,b) => b.ratio - a.ratio || a.p.tempoChegada - b.p.tempoChegada || a.p.id.localeCompare(b.p.id))[0].p;
+
+      const idx = prontos.findIndex(x => x.id === escolha.id);
+      prontos.splice(idx, 1);
+
+      const inicio = Math.max(tempo, escolha.tempoChegada);
+      const fim = inicio + escolha.duracao;
+      execs.push({ processoId: escolha.id, inicio, fim });
+      tempo = fim;
     }
-    saida.push(atual);
-    return saida;
+
+    return this.calcularMetricas(base, execs);
   }
 
-  private calcularMetricas(processos: Processo[], execucoes: Execucao[]): ResultadoSimulacao {
-    const mapa = new Map<string, { primeiroInicio: number; conclusao: number; totalExecutado: number }>();
-    for (const p of processos) {
-      mapa.set(p.id, { primeiroInicio: Number.POSITIVE_INFINITY, conclusao: 0, totalExecutado: 0 });
-    }
+ 
+  simularPrioridadeAging(
+    processos: Processo[],
+    cfg: { rate: number }
+  ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
 
-    for (const e of execucoes) {
-      const m = mapa.get(e.processoId)!;
-      m.primeiroInicio = Math.min(m.primeiroInicio, e.inicio);
-      m.conclusao = Math.max(m.conclusao, e.fim);
-      m.totalExecutado += (e.fim - e.inicio);
-    }
+    const rate = Number(cfg?.rate ?? 0.1);
+    type P = Processo & { restante: number; exec: number };
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({ ...p, restante: p.duracao, exec: 0 }));
 
-    const espera: number[] = [];
-    const retorno: number[] = [];
-    const resposta: number[] = [];
+    const execs: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
+    const fim = () => procs.every(p => p.restante <= 0);
 
-    for (const p of processos) {
-      const m = mapa.get(p.id)!;
-      const primeiro = isFinite(m.primeiroInicio) ? m.primeiroInicio : p.tempoChegada;
-      const tat = m.conclusao - p.tempoChegada;   
-      const wt  = tat - m.totalExecutado;         
-      const rt  = primeiro - p.tempoChegada;      
-      espera.push(wt);
-      retorno.push(tat);
-      resposta.push(rt);
-    }
-
-    const media = (a: number[]) => a.reduce((x,y)=>x+y,0)/(a.length||1);
-
-    return {
-      execucoes,
-      tempoMedioEspera:   +media(espera).toFixed(2),
-      tempoMedioRetorno:  +media(retorno).toFixed(2),
-      tempoMedioResposta: +media(resposta).toFixed(2),
+    const score = (p: P, t: number) => {
+      const prio = p.prioridade ?? 1000;
+      const waited = Math.max(0, t - p.tempoChegada - p.exec);
+      return prio - rate * waited; 
     };
+
+    while (!fim()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      ready.sort((a,b)=> score(a, tempo) - score(b, tempo) || a.tempoChegada - b.tempoChegada);
+      const cur = ready[0];
+
+      execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
+      cur.restante -= 1;
+      cur.exec += 1;
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execs));
+  }
+
+
+  simularMLQ(
+    processos: Processo[],
+    cfg: { fgPolitica: 'RR'|'FCFS'; fgQuantum: number; bgPolitica: 'FCFS'|'RR'; bgQuantum: number }
+  ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
+    type P = Processo & { restante:number; classe:'FG'|'BG' };
+    const fgQ = Math.max(1, cfg?.fgQuantum ?? 2);
+    const bgQ = Math.max(1, cfg?.bgQuantum ?? 4);
+    const fgPol = (cfg?.fgPolitica || 'RR').toUpperCase() as 'RR'|'FCFS';
+    const bgPol = (cfg?.bgPolitica || 'FCFS').toUpperCase() as 'FCFS'|'RR';
+
+    const base = this.copia(processos);
+    const procs: P[] = base.map(p => ({
+      ...p,
+      restante: p.duracao,
+      classe: (p.prioridade ?? Number.POSITIVE_INFINITY) <= 1 ? 'FG' : 'BG'
+    }));
+
+    const execs: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+
+    const done = () => procs.every(p=>p.restante<=0);
+
+    const nextArrivalFG = (t: number) => {
+      const arrs = procs.filter(p => p.classe==='FG' && p.restante>0 && p.tempoChegada > t).map(p => p.tempoChegada);
+      return arrs.length ? Math.min(...arrs) : Number.POSITIVE_INFINITY;
+    };
+
+    const filaFG: P[] = [];
+    const filaBG: P[] = [];
+
+    const enfileirarChegados = () => {
+      procs.filter(p => p.restante>0 && p.tempoChegada <= tempo)
+           .forEach(p => {
+             const fila = p.classe==='FG' ? filaFG : filaBG;
+             if (!fila.includes(p)) fila.push(p);
+           });
+    };
+
+    while (!done()) {
+      enfileirarChegados();
+
+      let cur: P | null = null;
+      let quantum = 1;
+
+      if (filaFG.length) {
+        cur = filaFG[0];
+        quantum = (fgPol === 'RR') ? fgQ : (cur.restante);
+      } else if (filaBG.length) {
+        cur = filaBG[0];
+        const limiteFG = nextArrivalFG(tempo);
+        quantum = (bgPol === 'RR') ? bgQ : cur.restante;
+        if (limiteFG < Number.POSITIVE_INFINITY) {
+          quantum = Math.min(quantum, Math.max(1, limiteFG - tempo));
+        }
+      }
+
+      if (!cur) { tempo++; continue; }
+
+      const uso = Math.max(1, Math.min(quantum, cur.restante));
+      execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + uso });
+      cur.restante -= uso;
+      tempo += uso;
+
+      [filaFG, filaBG].forEach(f => {
+        if (!f.length) return;
+        if (f[0] === cur) f.shift();
+        if (cur && cur.restante > 0 && ((cur.classe==='FG' && fgPol==='RR') || (cur.classe==='BG' && bgPol==='RR'))) {
+          (cur.classe==='FG' ? filaFG : filaBG).push(cur);
+        }
+      });
+
+      enfileirarChegados();
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execs));
+  }
+
+  simularRM(
+    processos: Processo[],
+    cfg: { periodPadrao: number }
+  ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
+    const periodPadrao = Math.max(1, cfg?.periodPadrao ?? 10);
+    type P = ProcessoExt & { restante:number; period:number };
+    const base = this.copia(processos) as ProcessoExt[];
+    const procs: P[] = base.map(p => ({
+      ...p,
+      restante: p.duracao,
+      period: Math.max(1, (p.period ?? periodPadrao))
+    }));
+
+    const execs: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    const fim = () => procs.every(p => p.restante <= 0);
+
+    while (!fim()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      ready.sort((a,b)=> a.period - b.period || a.tempoChegada - b.tempoChegada);
+      const cur = ready[0];
+
+      execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
+      cur.restante -= 1;
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execs));
+  }
+
+  simularDM(
+    processos: Processo[],
+    cfg: { deadlinePadrao: number }
+  ): ResultadoSimulacao {
+    if (!processos?.length) return this.vazio();
+
+    const deadlinePadrao = Math.max(1, cfg?.deadlinePadrao ?? 10);
+    type P = ProcessoExt & { restante:number; drel:number };
+    const base = this.copia(processos) as ProcessoExt[];
+    const procs: P[] = base.map(p => ({
+      ...p,
+      restante: p.duracao,
+      drel: Math.max(1, (p.deadline ?? deadlinePadrao))
+    }));
+
+    const execs: Execucao[] = [];
+    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    const fim = () => procs.every(p => p.restante <= 0);
+
+    while (!fim()) {
+      const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
+      if (!ready.length) { tempo++; continue; }
+
+      ready.sort((a,b)=> a.drel - b.drel || a.tempoChegada - b.tempoChegada);
+      const cur = ready[0];
+
+      execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
+      cur.restante -= 1;
+      tempo += 1;
+    }
+
+    return this.calcularMetricas(base, this.fundirAdjacentes(execs));
   }
 }
