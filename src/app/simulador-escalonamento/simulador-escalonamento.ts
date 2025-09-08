@@ -65,7 +65,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   modo: 'lecture' | 'exploration' = 'lecture';
   page: 'home' | 'add' | 'edit' | 'simulate' | 'remove' = 'home';
 
-
   tocando = false;
   passoAtual = 0;
   velocidade = 1.0;
@@ -90,7 +89,16 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     id: ['', Validators.required],
     tempoChegada: [0, [Validators.required, Validators.min(0)]],
     duracao: [1, [Validators.required, Validators.min(1)]],
-    prioridade: [1, [Validators.required, Validators.min(1)]],
+    prioridade: [1, [Validators.min(1)]],
+
+    tickets: [null as number | null],
+    grupo: ['' as string],
+    share: [null as number | null],
+    nice: [null as number | null],
+    mlqFilaInicial: [null as ('FG'|'BG'|number|null)],
+    mlfqNivelInicial: [null as number | null],
+    periodo: [null as number | null],
+    deadline: [null as number | null],
   });
 
   formularioConfig = this.fb.group({
@@ -118,9 +126,17 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   get algoritmosSelecionados(): Algoritmo[] {
     return (this.formularioConfig.value.algoritmo || []) as Algoritmo[];
   }
+  get showTickets() { return this.algoritmosSelecionados.some(a => a==='LOTTERY' || a==='STRIDE'); }
+  get showGrupo()   { return this.algoritmosSelecionados.some(a => a==='FAIR' || a==='CFS'); }
+  get showShare()   { return this.algoritmosSelecionados.includes('FAIR'); }
+  get showNice()    { return this.algoritmosSelecionados.includes('CFS'); }
+  get showMLQ()     { return this.algoritmosSelecionados.includes('MLQ'); }
+  get showMLFQ()    { return this.algoritmosSelecionados.includes('MLFQ'); }
+  get showRM()      { return this.algoritmosSelecionados.includes('RM'); }
+  get showDM()      { return this.algoritmosSelecionados.includes('DM'); }
+
   get jaSimulou(): boolean { return !!this.resultado || this.comparacao.length > 0; }
   get temResultados(): boolean { return this.jaSimulou; }
-
   get isComparacaoAtiva(): boolean {
     const podeMostrar = this.page === 'home' || this.page === 'simulate';
     return podeMostrar && !this.resultado && this.comparacao.length > 0;
@@ -183,6 +199,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     private router: Router
   ) {}
 
+  private numOrU(v: any) { return v === null || v === '' || v === undefined ? undefined : Number(v); }
+  private strOrU(v: any) { return v === null || v === '' ? undefined : String(v); }
+
   private persistProcessos() {
     try { localStorage.setItem('sim.processos', JSON.stringify(this.processos())); } catch {}
   }
@@ -204,47 +223,44 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
 
   private syncPageFromUrl(url: string) {
-  if (url.startsWith('/aula')) {
-    this.modo = 'lecture';
-    this.page = 'home';
-    return;
+    if (url.startsWith('/aula')) {
+      this.modo = 'lecture';
+      this.page = 'home';
+      return;
+    }
+    this.modo = 'exploration';
+    if (url.startsWith('/adicionar')) this.page = 'add';
+    else if (url.startsWith('/editar')) this.page = 'edit';
+    else if (url.startsWith('/remover')) this.page = 'remove';
+    else if (url.startsWith('/simular')) this.page = 'simulate';
+    else this.page = 'home';
   }
-  this.modo = 'exploration';
-  if (url.startsWith('/adicionar')) this.page = 'add';
-  else if (url.startsWith('/editar')) this.page = 'edit';
-  else if (url.startsWith('/remover')) this.page = 'remove';   
-  else if (url.startsWith('/simular')) this.page = 'simulate';
-  else this.page = 'home';
-}
 
   ngOnInit(): void {
     this.hydrateFromStorage();
 
-   this.route.data.subscribe(d => {
-  this.modo = (d?.['mode'] as any) || this.modo;
-  this.page = (d?.['page'] as any) || this.page;
+    this.route.data.subscribe(d => {
+      this.modo = (d?.['mode'] as any) || this.modo;
+      this.page = (d?.['page'] as any) || this.page;
 
-  if (this.modo !== 'exploration') return;
+      if (this.modo !== 'exploration') return;
 
-  if (this.page === 'add') {
-    this.entrarEmAdicionar();
-  } else if (this.page === 'edit') {
-    this.entrarEmEditar();
-  } else if (this.page === 'remove') {
-    this.entrarEmRemover();         // <— NOVO
-  } else if (this.page === 'simulate') {
-    this.preferirConfig = false;
-    this.mostrarForm = false;
-    this.selecaoModo = null;
-    this.abaDireitaIndex = 0;
-    this.editingId = null;
-    this.originalIdEmEdicao = null;
-  } else {
-    this.selecaoModo = null;
-    this.abaDireitaIndex = 0;
-    this.mostrarForm = !this.temResultados && !this.processos().length;
-  }
-});
+      if (this.page === 'add') this.entrarEmAdicionar();
+      else if (this.page === 'edit') this.entrarEmEditar();
+      else if (this.page === 'remove') this.entrarEmRemover();
+      else if (this.page === 'simulate') {
+        this.preferirConfig = false;
+        this.mostrarForm = false;
+        this.selecaoModo = null;
+        this.abaDireitaIndex = 0;
+        this.editingId = null;
+        this.originalIdEmEdicao = null;
+      } else {
+        this.selecaoModo = null;
+        this.abaDireitaIndex = 0;
+        this.mostrarForm = !this.temResultados && !this.processos().length;
+      }
+    });
 
     this.syncPageFromUrl(this.router.url);
     this.router.events
@@ -270,6 +286,33 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       if (this.editingId && this.formularioConfig.value.preview) this.atualizarPreviewEdicao();
       else this.simular();
     });
+
+    this.formularioConfig.controls.algoritmo.valueChanges?.subscribe(() => this.syncExtraFields());
+    this.syncExtraFields();
+  }
+
+  private syncExtraFields() {
+    const f = this.formularioProcesso.controls;
+    const set = (ctl: any, enabled: boolean, validators: any[] = []) => {
+      if (enabled) {
+        ctl.enable({ emitEvent:false });
+        ctl.setValidators(validators);
+      } else {
+        ctl.reset(null, { emitEvent:false });
+        ctl.disable({ emitEvent:false });
+        ctl.clearValidators();
+      }
+      ctl.updateValueAndValidity({ emitEvent:false });
+    };
+
+    set(f['tickets'], this.showTickets, [Validators.min(1)]);
+    set(f['grupo'],   this.showGrupo);
+    set(f['share'],   this.showShare, [Validators.min(1)]);
+    set(f['nice'],    this.showNice );
+    set(f['mlqFilaInicial'], this.showMLQ);
+    set(f['mlfqNivelInicial'], this.showMLFQ, [Validators.min(0)]);
+    set(f['periodo'],  this.showRM, [Validators.min(1)]);
+    set(f['deadline'], this.showDM, [Validators.min(1)]);
   }
 
   private entrarEmAdicionar() {
@@ -299,29 +342,30 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   onAbaDireitaChange(idx: number) { this.abaDireitaIndex = idx; }
   abrirSelecao(modo: 'editar' | 'remover') { this.selecaoModo = modo; this.abaDireitaIndex = 1; }
-async voltarParaSimulacao() {
-  this.limparMensagem();
 
-  this.selecaoModo = null;
-  this.abaDireitaIndex = 0;
-  this.mostrarForm = false;
-  this.editingId = null;
-  this.originalIdEmEdicao = null;
+  async voltarParaSimulacao() {
+    this.limparMensagem();
 
-  if (!this.processos().length) {
-    this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
-    await this.router.navigate(['/adicionar']);
-    return;
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+    this.mostrarForm = false;
+    this.editingId = null;
+    this.originalIdEmEdicao = null;
+
+    if (!this.processos().length) {
+      this.mensagemErro = '⚠️ Adicione pelo menos 1 processo para simular.';
+      await this.router.navigate(['/adicionar']);
+      return;
+    }
+    this.ensureAlgoritmosSelecionados();
+
+    await this.router.navigate(
+      ['/simular'],
+      { queryParams: { run: '1', t: Date.now() }, queryParamsHandling: 'merge' }
+    );
+
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
   }
-  this.ensureAlgoritmosSelecionados();
-
-  await this.router.navigate(
-    ['/simular'],
-    { queryParams: { run: '1', t: Date.now() }, queryParamsHandling: 'merge' }
-  );
-
-  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
-}
 
   setModo(m: 'lecture' | 'exploration') {
     this.router.navigate([m === 'lecture' ? '/aula' : '/simular']);
@@ -335,6 +379,8 @@ async voltarParaSimulacao() {
     this.formularioConfig.controls.algoritmo.setValue(novo as Algoritmo[], { emitEvent: false });
     this.ultimaSelecaoAlgoritmos = [...(novo as Algoritmo[])];
     this.persistAlgoritmos();
+
+    this.syncExtraFields();
 
     if (this.jaSimulou) {
       if (this.editingId && this.formularioConfig.value.preview) this.atualizarPreviewEdicao();
@@ -374,41 +420,48 @@ async voltarParaSimulacao() {
       id: '',
       tempoChegada: 0,
       duracao: 1,
-      prioridade: 1
+      prioridade: 1,
+      tickets: null, grupo: '', share: null, nice: null,
+      mlqFilaInicial: null, mlfqNivelInicial: null, periodo: null, deadline: null
     });
 
+    this.syncExtraFields();
     this.limparMensagem();
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
   }
-adicionarDock() {
-  this.limparMensagem();
 
-  if (this.modo === 'exploration' && this.page === 'add') {
-    this.adicionar();
-    return;
+  adicionarDock() {
+    this.limparMensagem();
+
+    if (this.modo === 'exploration' && this.page === 'add') {
+      this.adicionar();
+      return;
+    }
+
+    this.editingId = null;
+    this.originalIdEmEdicao = null;
+
+    this.mostrarForm = true;
+    this.preferirConfig = true;
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+
+    this.formularioProcesso.reset({
+      id: '',
+      tempoChegada: 0,
+      duracao: 1,
+      prioridade: 1,
+      tickets: null, grupo: '', share: null, nice: null,
+      mlqFilaInicial: null, mlfqNivelInicial: null, periodo: null, deadline: null
+    });
+
+    this.syncExtraFields();
+    this.router.navigate(['/adicionar']);
   }
-
-  this.editingId = null;
-  this.originalIdEmEdicao = null;
-
-  this.mostrarForm = true;
-  this.preferirConfig = true;
-  this.selecaoModo = null;
-  this.abaDireitaIndex = 0;
-
-  this.formularioProcesso.reset({
-    id: '',
-    tempoChegada: 0,
-    duracao: 1,
-    prioridade: 1
-  });
-
-  this.router.navigate(['/adicionar']);
-}
 
   adicionar() {
     if (this.formularioProcesso.invalid) {
-      this.mensagemErro = 'Preencha todos os campos do processo.';
+      this.mensagemErro = 'Preencha os campos obrigatórios.';
       this.formularioProcesso.markAllAsTouched();
       return;
     }
@@ -423,7 +476,16 @@ adicionarDock() {
       id: String(raw.id).trim(),
       tempoChegada: Number(raw.tempoChegada),
       duracao: Number(raw.duracao),
-      prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
+      prioridade: this.numOrU(raw.prioridade),
+
+      tickets: this.numOrU(raw.tickets),
+      grupo:   this.strOrU(raw.grupo),
+      share:   this.numOrU(raw.share),
+      nice:    this.numOrU(raw.nice),
+      mlqFilaInicial: raw.mlqFilaInicial ?? undefined,
+      mlfqNivelInicial: this.numOrU(raw.mlfqNivelInicial),
+      periodo: this.numOrU(raw.periodo),
+      deadline: this.numOrU(raw.deadline),
     };
 
     if (!p.id) return;
@@ -435,8 +497,16 @@ adicionarDock() {
     this.processos.update(arr => [...arr, p]);
     this.persistProcessos();
 
-    this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
+    this.formularioProcesso.reset({
+      id: '',
+      tempoChegada: 0,
+      duracao: 1,
+      prioridade: 1,
+      tickets: null, grupo: '', share: null, nice: null,
+      mlqFilaInicial: null, mlfqNivelInicial: null, periodo: null, deadline: null
+    });
     this.ultimaSelecaoAlgoritmos = [...this.algoritmosSelecionados];
+    this.syncExtraFields();
     this.limparMensagem();
   }
 
@@ -444,32 +514,42 @@ adicionarDock() {
     this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
   }
 
-editar(p: Processo) {
-  this.mostrarForm = true;
-  this.preferirConfig = true;
+  editar(p: Processo) {
+    this.mostrarForm = true;
+    this.preferirConfig = true;
 
-  this.formularioProcesso.setValue({
-    id: p.id,
-    tempoChegada: p.tempoChegada,
-    duracao: p.duracao,
-    prioridade: p.prioridade ?? 1
-  });
+    this.formularioProcesso.patchValue({
+      id: p.id,
+      tempoChegada: p.tempoChegada,
+      duracao: p.duracao,
+      prioridade: p.prioridade ?? 1,
 
-  this.editingId = p.id;
-  this.originalIdEmEdicao = p.id;
+      tickets: p.tickets ?? null,
+      grupo: p.grupo ?? '',
+      share: p.share ?? null,
+      nice: p.nice ?? null,
+      mlqFilaInicial: (p.mlqFilaInicial as any) ?? null,
+      mlfqNivelInicial: p.mlfqNivelInicial ?? null,
+      periodo: p.periodo ?? null,
+      deadline: p.deadline ?? null,
+    }, { emitEvent: false });
 
-  if (!this.algoritmosSelecionados.length && this.ultimaSelecaoAlgoritmos.length) {
-    this.formularioConfig.controls.algoritmo.setValue(
-      [...this.ultimaSelecaoAlgoritmos] as Algoritmo[], { emitEvent: false }
-    );
+    this.editingId = p.id;
+    this.originalIdEmEdicao = p.id;
+
+    if (!this.algoritmosSelecionados.length && this.ultimaSelecaoAlgoritmos.length) {
+      this.formularioConfig.controls.algoritmo.setValue(
+        [...this.ultimaSelecaoAlgoritmos] as Algoritmo[], { emitEvent: false }
+      );
+    }
+
+    this.syncExtraFields();
+    this.limparMensagem();
+
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
   }
-
-  this.limparMensagem();
-
-  this.selecaoModo = null;   
-  this.abaDireitaIndex = 0;  
-  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
-}
 
   salvarEdicao() {
     if (this.formularioProcesso.invalid || !this.originalIdEmEdicao) return;
@@ -478,7 +558,16 @@ editar(p: Processo) {
       id: String(raw.id).trim(),
       tempoChegada: Number(raw.tempoChegada),
       duracao: Number(raw.duracao),
-      prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
+      prioridade: this.numOrU(raw.prioridade),
+
+      tickets: this.numOrU(raw.tickets),
+      grupo:   this.strOrU(raw.grupo),
+      share:   this.numOrU(raw.share),
+      nice:    this.numOrU(raw.nice),
+      mlqFilaInicial: raw.mlqFilaInicial ?? undefined,
+      mlfqNivelInicial: this.numOrU(raw.mlfqNivelInicial),
+      periodo: this.numOrU(raw.periodo),
+      deadline: this.numOrU(raw.deadline),
     };
     if (!atualizado.id) return;
 
@@ -495,8 +584,13 @@ editar(p: Processo) {
   cancelarEdicao() {
     this.editingId = null;
     this.originalIdEmEdicao = null;
-    this.formularioProcesso.reset({ id: '', tempoChegada: 0, duracao: 1, prioridade: 1 });
+    this.formularioProcesso.reset({
+      id: '', tempoChegada: 0, duracao: 1, prioridade: 1,
+      tickets: null, grupo: '', share: null, nice: null,
+      mlqFilaInicial: null, mlfqNivelInicial: null, periodo: null, deadline: null
+    });
     this.mostrarForm = false;
+    this.syncExtraFields();
     this.limparMensagem();
     if (this.jaSimulou && this.formularioConfig.value.preview) {
       this.formularioConfig.controls.preview.setValue(false, { emitEvent: true });
@@ -513,10 +607,10 @@ editar(p: Processo) {
 
   preencherExemplo() {
     this.processos.set([
-      { id: 'P1', tempoChegada: 0, duracao: 8, prioridade: 3 },
-      { id: 'P2', tempoChegada: 1, duracao: 4, prioridade: 2 },
-      { id: 'P3', tempoChegada: 2, duracao: 9, prioridade: 1 },
-      { id: 'P4', tempoChegada: 3, duracao: 5, prioridade: 2 },
+      { id: 'P1', tempoChegada: 0, duracao: 8, prioridade: 3, tickets: 80, share: 1, nice: 0, mlqFilaInicial: 'FG', mlfqNivelInicial: 0, periodo: 12, deadline: 8 },
+      { id: 'P2', tempoChegada: 1, duracao: 4, prioridade: 2, tickets: 120, share: 2, nice: 5, mlqFilaInicial: 'BG', mlfqNivelInicial: 1, periodo: 10, deadline: 6 },
+      { id: 'P3', tempoChegada: 2, duracao: 9, prioridade: 1, tickets: 60, share: 1, nice: -2, mlqFilaInicial: 'BG', mlfqNivelInicial: 2, periodo: 14, deadline: 7 },
+      { id: 'P4', tempoChegada: 3, duracao: 5, prioridade: 2, tickets: 200, share: 3, nice: 10, mlqFilaInicial: 'FG', mlfqNivelInicial: 0, periodo: 8,  deadline: 5 },
     ]);
     this.persistProcessos();
 
@@ -535,39 +629,38 @@ editar(p: Processo) {
     this.voltarParaSimulacao();
   }
 
-limpar() {
-  this.processos.set([]);
-  this.persistProcessos();
+  limpar() {
+    this.processos.set([]);
+    this.persistProcessos();
 
-  this.resultado = undefined;
-  this.dadosGantt = [];
-  this.metricasDetalhadas = [];
-  this.comparacao = [];
-  this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
-  this.mensagemErro = null;
+    this.resultado = undefined;
+    this.dadosGantt = [];
+    this.metricasDetalhadas = [];
+    this.comparacao = [];
+    this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
+    this.mensagemErro = null;
 
-  this.resultadoConfirmado = undefined;
-  this.comparacaoConfirmada = [];
-  this.dadosGanttConfirmado = [];
-  this.resultadosMulti = {};
-  this.ganttMulti = {};
-  this.coresGanttMulti = {};
-  this.paletaProcessos = {};
-  this.kpisResumo = undefined;
+    this.resultadoConfirmado = undefined;
+    this.comparacaoConfirmada = [];
+    this.dadosGanttConfirmado = [];
+    this.resultadosMulti = {};
+    this.ganttMulti = {};
+    this.coresGanttMulti = {};
+    this.paletaProcessos = {};
+    this.kpisResumo = undefined;
 
-  this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
-  this.persistAlgoritmos();
-  this.ultimaSelecaoAlgoritmos = [];
-  this.irParaNovoProcesso();
-  this.router.navigate(['/adicionar']);
-}
+    this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
+    this.persistAlgoritmos();
+    this.ultimaSelecaoAlgoritmos = [];
+    this.irParaNovoProcesso();
+    this.router.navigate(['/adicionar']);
+  }
 
-
-private rolarParaResultados() {
-  setTimeout(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, 100); 
-}
+  private rolarParaResultados() {
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
+  }
 
   private ensureAlgoritmosSelecionados(): void {
     let algos = this.algoritmosSelecionados;
@@ -656,7 +749,6 @@ private rolarParaResultados() {
         return;
       }
 
-      // multi
       this.resultado = undefined;
       this.dadosGantt = [];
       this.metricasDetalhadas = [];
@@ -708,7 +800,16 @@ private rolarParaResultados() {
       id: String(raw.id).trim(),
       tempoChegada: Number(raw.tempoChegada),
       duracao: Number(raw.duracao),
-      prioridade: raw.prioridade != null ? Number(raw.prioridade) : undefined
+      prioridade: this.numOrU(raw.prioridade),
+
+      tickets: this.numOrU(raw.tickets),
+      grupo:   this.strOrU(raw.grupo),
+      share:   this.numOrU(raw.share),
+      nice:    this.numOrU(raw.nice),
+      mlqFilaInicial: raw.mlqFilaInicial ?? undefined,
+      mlfqNivelInicial: this.numOrU(raw.mlfqNivelInicial),
+      periodo: this.numOrU(raw.periodo),
+      deadline: this.numOrU(raw.deadline),
     };
 
     const listaPreview = this.processos().map(p => p.id === this.originalIdEmEdicao ? atualizado : p);
@@ -921,20 +1022,19 @@ private rolarParaResultados() {
   }
 
   escolherNaLista(id: string) {
-  const p = this.processos().find(x => x.id === id);
-  if (!p) { this.voltarParaSimulacao(); return; }
+    const p = this.processos().find(x => x.id === id);
+    if (!p) { this.voltarParaSimulacao(); return; }
 
-  if (this.selecaoModo === 'editar') {
-    this.editar(p);
-    this.selecaoModo = null;
-    this.abaDireitaIndex = 0;
-  } else if (this.selecaoModo === 'remover') {
-    this.remover(id);
-    this.selecaoModo = 'remover';
-    this.abaDireitaIndex = 1;
+    if (this.selecaoModo === 'editar') {
+      this.editar(p);
+      this.selecaoModo = null;
+      this.abaDireitaIndex = 0;
+    } else if (this.selecaoModo === 'remover') {
+      this.remover(id);
+      this.selecaoModo = 'remover';
+      this.abaDireitaIndex = 1;
+    }
   }
-}
-
 
   editarDock() {
     if (!(this.modo === 'exploration' && this.page === 'edit')) {
@@ -950,11 +1050,10 @@ private rolarParaResultados() {
     }
   }
 
- removerDock() {
-  if (!this.processos().length) return;
-  this.router.navigate(['/remover']);  // em qualquer tela, inclusive /simular
-}
-
+  removerDock() {
+    if (!this.processos().length) return;
+    this.router.navigate(['/remover']);
+  }
 
   async simularDock() {
     this.limparMensagem();
@@ -976,11 +1075,10 @@ private rolarParaResultados() {
   }
 
   private entrarEmRemover() {
-  this.preferirConfig = true;   // mantém config à direita, como nas outras telas
-  this.mostrarForm = false;
-  this.selecaoModo = 'remover';
-  this.abaDireitaIndex = 1;     // seleciona a aba "Remover processo"
-  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
-}
-
+    this.preferirConfig = true;
+    this.mostrarForm = false;
+    this.selecaoModo = 'remover';
+    this.abaDireitaIndex = 1;
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+  }
 }

@@ -4,19 +4,11 @@
   </div>
 
   <div class="toolbar-right">
-    <a mat-stroked-button
-       [routerLink]="['/aula']"
-       routerLinkActive
-       #aulaRLA="routerLinkActive"
-       [color]="aulaRLA.isActive ? 'accent' : undefined">
+    <a mat-stroked-button [routerLink]="['/aula']" routerLinkActive #aulaRLA="routerLinkActive" [color]="aulaRLA.isActive ? 'accent' : undefined">
       Modo Aula
     </a>
 
-    <a mat-stroked-button
-       [routerLink]="['/simular']"
-       routerLinkActive
-       #explorarRLA="routerLinkActive"
-       [color]="explorarRLA.isActive ? 'accent' : undefined">
+    <a mat-stroked-button [routerLink]="['/simular']" routerLinkActive #explorarRLA="routerLinkActive" [color]="explorarRLA.isActive ? 'accent' : undefined">
       Modo Exploração
     </a>
   </div>
@@ -30,13 +22,7 @@
           <h3 class="va-title">Comparação — gráfico</h3>
           <div class="grow"></div>
           <label class="va-label">Ver:</label>
-          <mat-button-toggle-group
-            [(ngModel)]="chartSelecionado"
-            [ngModelOptions]="{standalone: true}"
-            [value]="chartSelecionado"
-            name="grafSel"
-            class="chart-toggle"
-            [multiple]="false">
+          <mat-button-toggle-group [(ngModel)]="chartSelecionado" [ngModelOptions]="{standalone: true}" [value]="chartSelecionado" name="grafSel" class="chart-toggle" [multiple]="false">
             <mat-button-toggle value="espera">Espera média</mat-button-toggle>
             <mat-button-toggle value="retorno">Retorno médio</mat-button-toggle>
             <mat-button-toggle value="resposta">Resposta média</mat-button-toggle>
@@ -80,10 +66,7 @@
   </section>
 
   <section class="painel-right" *ngIf="modo==='exploration'; else dicaLecture">
-
-    <mat-tab-group class="right-tabs"
-                   [selectedIndex]="abaDireitaIndex"
-                   (selectedIndexChange)="onAbaDireitaChange($event)">
+    <mat-tab-group class="right-tabs" [selectedIndex]="abaDireitaIndex" (selectedIndexChange)="onAbaDireitaChange($event)">
       <mat-tab label="Simulação">
         <ng-template #configProcessos>
           <form class="va-panel" [formGroup]="formularioProcesso" *ngIf="mostrarForm || editingId">
@@ -107,7 +90,53 @@
 
               <label class="va-field">
                 <span class="va-label">Prioridade</span>
-                <input class="va-input" formControlName="prioridade" required type="number" min="1" (focus)="limparMensagem()">
+                <input class="va-input" formControlName="prioridade" type="number" min="1" (focus)="limparMensagem()">
+              </label>
+
+              <label class="va-field" *ngIf="showTickets">
+                <span class="va-label">Tickets (Lottery/Stride)</span>
+                <input class="va-input" formControlName="tickets" type="number" min="1">
+              </label>
+
+              <label class="va-field" *ngIf="showGrupo">
+                <span class="va-label">Grupo (Fair/CFS)</span>
+                <input class="va-input" formControlName="grupo" type="text" placeholder="ex: turmaA">
+              </label>
+
+              <label class="va-field" *ngIf="showShare">
+                <span class="va-label">Share (Fair)</span>
+                <input class="va-input" formControlName="share" type="number" min="1">
+              </label>
+
+              <label class="va-field" *ngIf="showNice">
+                <span class="va-label">Nice (CFS)</span>
+                <input class="va-input" formControlName="nice" type="number">
+              </label>
+
+              <label class="va-field" *ngIf="showMLQ">
+                <span class="va-label">MLQ — Fila inicial</span>
+                <select class="va-input" formControlName="mlqFilaInicial">
+                  <option [ngValue]="null">Auto</option>
+                  <option [ngValue]="'FG'">FG</option>
+                  <option [ngValue]="'BG'">BG</option>
+                  <option [ngValue]="0">0</option>
+                  <option [ngValue]="1">1</option>
+                </select>
+              </label>
+
+              <label class="va-field" *ngIf="showMLFQ">
+                <span class="va-label">MLFQ — Nível inicial</span>
+                <input class="va-input" formControlName="mlfqNivelInicial" type="number" min="0">
+              </label>
+
+              <label class="va-field" *ngIf="showRM">
+                <span class="va-label">RM — Período (por processo)</span>
+                <input class="va-input" formControlName="periodo" type="number" min="1">
+              </label>
+
+              <label class="va-field" *ngIf="showDM">
+                <span class="va-label">DM — Deadline relativa</span>
+                <input class="va-input" formControlName="deadline" type="number" min="1">
               </label>
             </div>
           </form>
@@ -120,9 +149,7 @@
                 <span class="va-label">Algoritmo(s)*</span>
                 <div class="va-checkbox-group">
                   <label *ngFor="let algo of listaAlgoritmos" class="va-checkbox">
-                    <input type="checkbox"
-                           [checked]="algoritmosSelecionados.includes(algo)"
-                           (change)="onToggleAlgoritmo(algo, $event)">
+                    <input type="checkbox" [checked]="algoritmosSelecionados.includes(algo)" (change)="onToggleAlgoritmo(algo, $event)">
                     <span>{{ algo }}</span>
                   </label>
                 </div>
@@ -135,40 +162,40 @@
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
                 <span class="va-label">MLFQ — Níveis</span>
-                <input class="va-input" type="number" formControlName="mlfqNiveis" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="mlfqNiveis">
               </label>
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
                 <span class="va-label">MLFQ — Quantum base</span>
-                <input class="va-input" type="number" formControlName="mlfqQuantumBase" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="mlfqQuantumBase">
               </label>
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
                 <span class="va-label">MLFQ — Boost (período)</span>
-                <input class="va-input" type="number" formControlName="mlfqBoost" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="mlfqBoost">
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('LOTTERY')">
                 <span class="va-label">Lottery — Tickets padrão</span>
-                <input class="va-input" type="number" formControlName="lotteryTicketsPadrao" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="lotteryTicketsPadrao">
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('STRIDE')">
                 <span class="va-label">Stride — Tickets padrão</span>
-                <input class="va-input" type="number" formControlName="strideTicketsPadrao" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="strideTicketsPadrao">
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('FAIR')">
                 <span class="va-label">Fair — Share padrão</span>
-                <input class="va-input" type="number" formControlName="fairSharePadrao" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="fairSharePadrao">
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('CFS')">
                 <span class="va-label">CFS — Nice padrão</span>
-                <input class="va-input" type="number" formControlName="cfsNicePadrao" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="cfsNicePadrao">
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('PRIORIDADE_AGING')">
                 <span class="va-label">Aging rate (↓ prioridade por tempo de espera)</span>
-                <input class="va-input" type="number" step="0.1" formControlName="agingRate" (focus)="limparMensagem()">
+                <input class="va-input" type="number" step="0.1" formControlName="agingRate">
               </label>
 
               <div class="va-field va-field-col2" *ngIf="algoritmosSelecionados.includes('MLQ')">
@@ -259,7 +286,6 @@
         </ng-template>
 
         <ng-template #resultadoBloco>
-       
           <section class="va-grid" *ngIf="resultado">
             <div class="va-panel">
               <h3 class="va-title">Métricas</h3>
@@ -388,8 +414,7 @@
         </ng-template>
       </mat-tab>
 
-      <mat-tab *ngIf="selecaoModo"
-               [label]="selecaoModo==='editar' ? 'Editar processo' : 'Remover processo'">
+      <mat-tab *ngIf="selecaoModo" [label]="selecaoModo==='editar' ? 'Editar processo' : 'Remover processo'">
         <section class="va-panel">
           <h3 class="va-title">
             {{ selecaoModo==='editar' ? 'Escolha um processo para editar' : 'Escolha um processo para remover' }}
@@ -411,9 +436,7 @@
           </ng-template>
 
           <div class="selecao-actions">
-          <button (click)="voltarParaSimulacao()">Voltar para Simulação</button>
-
-
+            <button (click)="voltarParaSimulacao()">Voltar para Simulação</button>
           </div>
         </section>
       </mat-tab>
@@ -437,9 +460,7 @@
       <button class="dock-item" type="button" (click)="adicionarDock()">Adicionar</button>
       <button class="dock-item" type="button" (click)="editarDock()" [disabled]="!processos().length">Editar</button>
       <button class="dock-item" type="button" (click)="removerDock()" [disabled]="!processos().length">Remover</button>
-      <button class="dock-item primary" type="button" (click)="simularDock()">
-      Simular
-      </button>
+      <button class="dock-item primary" type="button" (click)="simularDock()">Simular</button>
 
       <button class="dock-item" type="button" (click)="preencherExemplo()">Exemplo</button>
       <button class="dock-item warn" type="button" (click)="limpar()">Limpar</button>

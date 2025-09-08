@@ -3,12 +3,10 @@ import { Processo } from './models/processo';
 import { Execucao, ResultadoSimulacao } from './models/resultado-simulacao';
 
 type ProcessoRestante = Processo & { restante: number };
-type ProcessoExt = Processo & { period?: number; deadline?: number; classe?: string };
+type ProcessoExt = Processo & { classe?: 'FG' | 'BG' };
 
 @Injectable({ providedIn: 'root' })
 export class EscalonamentoService {
-
-
 
   private vazio(): ResultadoSimulacao {
     return { execucoes: [], tempoMedioEspera: 0, tempoMedioRetorno: 0, tempoMedioResposta: 0 };
@@ -63,7 +61,7 @@ export class EscalonamentoService {
       resposta.push(rt);
     }
 
-    const media = (a: number[]) => a.reduce((x,y)=>x+y,0)/(a.length||1);
+    const media = (a: number[]) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
 
     return {
       execucoes,
@@ -77,7 +75,7 @@ export class EscalonamentoService {
   simularFCFS(processos: Processo[]): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const lista = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
+    const lista = this.copia(processos).sort((a, b) => a.tempoChegada - b.tempoChegada);
     let tempo = 0;
     const execucoes: Execucao[] = [];
 
@@ -94,7 +92,7 @@ export class EscalonamentoService {
   simularSJF(processos: Processo[]): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const porChegada = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
+    const porChegada = this.copia(processos).sort((a, b) => a.tempoChegada - b.tempoChegada);
     const prontos: Processo[] = [];
     const execucoes: Execucao[] = [];
     let tempo = 0, i = 0;
@@ -103,7 +101,7 @@ export class EscalonamentoService {
       while (i < porChegada.length && porChegada[i].tempoChegada <= tempo) prontos.push(porChegada[i++]);
       if (!prontos.length) { tempo = porChegada[i].tempoChegada; continue; }
 
-      prontos.sort((a,b)=>a.duracao-b.duracao || a.tempoChegada-b.tempoChegada || a.id.localeCompare(b.id));
+      prontos.sort((a, b) => a.duracao - b.duracao || a.tempoChegada - b.tempoChegada || a.id.localeCompare(b.id));
       const p = prontos.shift()!;
       const inicio = Math.max(tempo, p.tempoChegada);
       const fim = inicio + p.duracao;
@@ -117,8 +115,8 @@ export class EscalonamentoService {
     if (!processos?.length) return this.vazio();
 
     const porChegada = this.copia(processos)
-      .map(p=>({ ...p, restante: p.duracao } as ProcessoRestante))
-      .sort((a,b)=>a.tempoChegada-b.tempoChegada);
+      .map(p => ({ ...p, restante: p.duracao } as ProcessoRestante))
+      .sort((a, b) => a.tempoChegada - b.tempoChegada);
 
     const execucoes: Execucao[] = [];
     const prontos: ProcessoRestante[] = [];
@@ -135,7 +133,7 @@ export class EscalonamentoService {
         empurrarChegados(tempo);
       }
       if (!atual) {
-        prontos.sort((a,b)=>a.restante-b.restante || a.tempoChegada-b.tempoChegada || a.id.localeCompare(b.id));
+        prontos.sort((a, b) => a.restante - b.restante || a.tempoChegada - b.tempoChegada || a.id.localeCompare(b.id));
         atual = prontos.shift()!;
         tempo = Math.max(tempo, atual.tempoChegada);
       }
@@ -154,7 +152,7 @@ export class EscalonamentoService {
       if (atual.restante <= 0) {
         atual = null;
       } else {
-        const melhor = [...prontos].sort((a,b)=>a.restante-b.restante)[0];
+        const melhor = [...prontos].sort((a, b) => a.restante - b.restante)[0];
         if (melhor && melhor.restante < atual.restante) {
           prontos.push(atual);
           atual = null;
@@ -162,7 +160,7 @@ export class EscalonamentoService {
       }
     }
 
-    const base: Processo[] = porChegada.map(({id,tempoChegada,duracao,prioridade}) =>
+    const base: Processo[] = porChegada.map(({ id, tempoChegada, duracao, prioridade }) =>
       ({ id, tempoChegada, duracao, prioridade })
     );
 
@@ -174,8 +172,8 @@ export class EscalonamentoService {
     if (quantum <= 0) throw new Error('Quantum deve ser > 0');
 
     const porChegada = this.copia(processos)
-      .map(p=>({ ...p, restante: p.duracao } as ProcessoRestante))
-      .sort((a,b)=>a.tempoChegada-b.tempoChegada);
+      .map(p => ({ ...p, restante: p.duracao } as ProcessoRestante))
+      .sort((a, b) => a.tempoChegada - b.tempoChegada);
 
     const fila: ProcessoRestante[] = [];
     const execucoes: Execucao[] = [];
@@ -199,7 +197,7 @@ export class EscalonamentoService {
       if (p.restante > 0) fila.push(p);
     }
 
-    const base: Processo[] = porChegada.map(({id,tempoChegada,duracao,prioridade}) =>
+    const base: Processo[] = porChegada.map(({ id, tempoChegada, duracao, prioridade }) =>
       ({ id, tempoChegada, duracao, prioridade })
     );
 
@@ -209,7 +207,7 @@ export class EscalonamentoService {
   simularPrioridade(processos: Processo[]): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const porChegada = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
+    const porChegada = this.copia(processos).sort((a, b) => a.tempoChegada - b.tempoChegada);
     const prontos: Processo[] = [];
     const execucoes: Execucao[] = [];
     let tempo = 0, i = 0;
@@ -218,7 +216,7 @@ export class EscalonamentoService {
       while (i < porChegada.length && porChegada[i].tempoChegada <= tempo) prontos.push(porChegada[i++]);
       if (!prontos.length) { tempo = porChegada[i].tempoChegada; continue; }
 
-      prontos.sort((a,b)=>{
+      prontos.sort((a, b) => {
         const pa = a.prioridade ?? Number.POSITIVE_INFINITY;
         const pb = b.prioridade ?? Number.POSITIVE_INFINITY;
         return pa - pb || a.tempoChegada - b.tempoChegada || a.id.localeCompare(b.id);
@@ -239,37 +237,38 @@ export class EscalonamentoService {
   ): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const N = Math.max(1, (cfg.niveis|0) || 3);
-    const qb = Math.max(1, (cfg.quantumBase|0) || 2);
-    const boostPeriod = Math.max(1, (cfg.boost|0) || 50);
+    const N = Math.max(1, (cfg.niveis | 0) || 3);
+    const qb = Math.max(1, (cfg.quantumBase | 0) || 2);
+    const boostPeriod = Math.max(1, (cfg.boost | 0) || 50);
 
-    type P = Processo & { restante:number; nivel:number; ultimoEntra:number };
+    type P = Processo & { restante: number; nivel: number; ultimoEntra: number };
     const base = this.copia(processos);
-    const procs: P[] = base.map(p => ({
-      ...p, restante: p.duracao, nivel: 0, ultimoEntra: p.tempoChegada
-    }));
+    const procs: P[] = base.map(p => {
+      const ini = Math.max(0, Math.min(N - 1, (p.mlfqNivelInicial ?? 0) | 0));
+      return { ...p, restante: p.duracao, nivel: ini, ultimoEntra: p.tempoChegada };
+    });
 
-    const filas: P[][] = Array.from({length:N}, ()=>[]);
+    const filas: P[][] = Array.from({ length: N }, () => []);
     const execucoes: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
     let ultimoBoost = tempo;
 
-    const quantumNivel = (lvl:number) => qb * (1 << lvl);
+    const quantumNivel = (lvl: number) => qb * (1 << lvl);
 
     const empurrarChegadas = () => {
       procs
-        .filter(p => p.tempoChegada <= tempo && p.restante > 0 && !filas.some(f=>f.includes(p)))
-        .forEach(p => filas[0].push(p));
+        .filter(p => p.tempoChegada <= tempo && p.restante > 0 && !filas.some(f => f.includes(p)))
+        .forEach(p => filas[p.nivel].push(p)); 
     };
 
-    const allDone = () => procs.every(p=>p.restante<=0);
+    const allDone = () => procs.every(p => p.restante <= 0);
 
     while (!allDone()) {
       if (tempo - ultimoBoost >= boostPeriod) {
         const ativos = procs.filter(p => p.restante > 0 && p.tempoChegada <= tempo);
         ativos.forEach(p => p.nivel = 0);
         filas.forEach(f => f.splice(0, f.length));
-        ativos.sort((a,b)=> a.ultimoEntra - b.ultimoEntra).forEach(p => filas[0].push(p));
+        ativos.sort((a, b) => a.ultimoEntra - b.ultimoEntra).forEach(p => filas[0].push(p));
         ultimoBoost = tempo;
       }
 
@@ -290,7 +289,7 @@ export class EscalonamentoService {
       empurrarChegadas();
 
       if (p.restante > 0) {
-        p.nivel = Math.min(N-1, p.nivel + 1);
+        p.nivel = Math.min(N - 1, p.nivel + 1);
         filas[p.nivel].push(p);
       }
     }
@@ -298,33 +297,38 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
+
   simularLottery(
     processos: Processo[],
     cfg: { ticketsPadrao: number; seed?: number }
   ): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao|0) || 100);
+    const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao | 0) || 100);
 
     let s = (cfg?.seed ?? 123456789) >>> 0;
     const rand = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 
-    type P = Processo & { restante:number; tickets:number };
+    type P = Processo & { restante: number; tickets: number };
 
     const base = this.copia(processos);
-    const procs: P[] = base.map(p => ({ ...p, restante: p.duracao, tickets: ticketsPadrao }));
+    const procs: P[] = base.map(p => ({
+      ...p,
+      restante: p.duracao,
+      tickets: Math.max(1, (p.tickets ?? ticketsPadrao))
+    }));
 
     const execucoes: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
 
-    const allDone = () => procs.every(p=>p.restante<=0);
+    const allDone = () => procs.every(p => p.restante <= 0);
 
     while (!allDone()) {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      const total = ready.reduce((sum,p)=> sum + p.tickets, 0);
-      let r = rand() * total; 
+      const total = ready.reduce((sum, p) => sum + p.tickets, 0);
+      let r = rand() * total;
       let escolha = ready[0];
       for (const p of ready) { r -= p.tickets; if (r <= 0) { escolha = p; break; } }
 
@@ -342,29 +346,32 @@ export class EscalonamentoService {
   ): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao|0) || 100);
+    const ticketsPadrao = Math.max(1, (cfg?.ticketsPadrao | 0) || 100);
     const K = 10000;
 
-    type P = Processo & { restante:number; tickets:number; stride:number; pass:number };
+    type P = Processo & { restante: number; tickets: number; stride: number; pass: number };
     const base = this.copia(processos);
-    const procs: P[] = base.map(p => ({
-      ...p,
-      restante: p.duracao,
-      tickets: ticketsPadrao,
-      stride: Math.floor(K / ticketsPadrao),
-      pass: 0
-    }));
+    const procs: P[] = base.map(p => {
+      const tk = Math.max(1, (p.tickets ?? ticketsPadrao));
+      return {
+        ...p,
+        restante: p.duracao,
+        tickets: tk,
+        stride: Math.floor(K / tk),
+        pass: 0
+      };
+    });
 
     const execucoes: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
 
-    const allDone = () => procs.every(p=>p.restante<=0);
+    const allDone = () => procs.every(p => p.restante <= 0);
 
     while (!allDone()) {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      ready.sort((a,b)=> a.pass - b.pass || a.tempoChegada - b.tempoChegada);
+      ready.sort((a, b) => a.pass - b.pass || a.tempoChegada - b.tempoChegada);
       const cur = ready[0];
 
       execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
@@ -382,23 +389,44 @@ export class EscalonamentoService {
   ): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const sharePadrao = Math.max(1, (cfg?.sharePadrao|0) || 1);
-    type P = Processo & { restante:number; share:number; usado:number };
+    const sharePadrao = Math.max(1, (cfg?.sharePadrao | 0) || 1);
 
+    type P = Processo & { restante: number; share: number; usado: number };
     const base = this.copia(processos);
-    const procs: P[] = base.map(p => ({ ...p, restante: p.duracao, share: sharePadrao, usado: 0 }));
+    const procs: P[] = base.map(p => ({
+      ...p,
+      restante: p.duracao,
+      share: Math.max(1, (p.share ?? sharePadrao)),
+      usado: 0
+    }));
 
     const execucoes: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
 
-    const allDone = () => procs.every(p=>p.restante<=0);
+    const allDone = () => procs.every(p => p.restante <= 0);
 
     while (!allDone()) {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      ready.sort((a,b)=> (a.usado/a.share) - (b.usado/b.share) || a.tempoChegada - b.tempoChegada);
-      const cur = ready[0];
+      const grupos = new Map<string, { usado: number; share: number }>();
+      for (const p of ready) {
+        const g = p.grupo ?? '__no_group__';
+        const cur = grupos.get(g) || { usado: 0, share: 0 };
+        cur.usado += p.usado;
+        cur.share += p.share;
+        grupos.set(g, cur);
+      }
+
+      const gEscolhido = [...grupos.entries()]
+        .sort((a, b) => (a[1].usado / a[1].share) - (b[1].usado / b[1].share))[0][0];
+
+      const candidatos = ready.filter(p => (p.grupo ?? '__no_group__') === gEscolhido);
+
+      candidatos.sort((a, b) =>
+        (a.usado / a.share) - (b.usado / b.share) || a.tempoChegada - b.tempoChegada
+      );
+      const cur = candidatos[0];
 
       execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
       cur.restante -= 1;
@@ -409,6 +437,7 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
+ 
   simularCFS(
     processos: Processo[],
     cfg: { nicePadrao: number }
@@ -418,22 +447,25 @@ export class EscalonamentoService {
     const nicePadrao = (cfg?.nicePadrao ?? 0) | 0;
     const weightFromNice = (n: number) => Math.max(1, Math.floor(1024 / Math.pow(1.25, n)));
 
-    type P = Processo & { restante:number; vruntime:number; weight:number };
+    type P = Processo & { restante: number; vruntime: number; weight: number };
     const base = this.copia(processos);
     const procs: P[] = base.map(p => ({
-      ...p, restante: p.duracao, vruntime: 0, weight: weightFromNice(nicePadrao)
+      ...p,
+      restante: p.duracao,
+      vruntime: 0,
+      weight: weightFromNice((p.nice ?? nicePadrao) | 0)
     }));
 
     const execucoes: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
 
-    const allDone = () => procs.every(p=>p.restante<=0);
+    const allDone = () => procs.every(p => p.restante <= 0);
 
     while (!allDone()) {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      ready.sort((a,b)=> a.vruntime - b.vruntime || a.tempoChegada - b.tempoChegada);
+      ready.sort((a, b) => a.vruntime - b.vruntime || a.tempoChegada - b.tempoChegada);
       const cur = ready[0];
 
       execucoes.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
@@ -449,7 +481,7 @@ export class EscalonamentoService {
   simularHRRN(processos: Processo[]): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    const base = this.copia(processos).sort((a,b)=>a.tempoChegada-b.tempoChegada);
+    const base = this.copia(processos).sort((a, b) => a.tempoChegada - b.tempoChegada);
     const execs: Execucao[] = [];
     let tempo = 0;
     let i = 0;
@@ -464,7 +496,7 @@ export class EscalonamentoService {
           p,
           ratio: ((tempo - p.tempoChegada) + p.duracao) / p.duracao
         }))
-        .sort((a,b) => b.ratio - a.ratio || a.p.tempoChegada - b.p.tempoChegada || a.p.id.localeCompare(b.p.id))[0].p;
+        .sort((a, b) => b.ratio - a.ratio || a.p.tempoChegada - b.p.tempoChegada || a.p.id.localeCompare(b.p.id))[0].p;
 
       const idx = prontos.findIndex(x => x.id === escolha.id);
       prontos.splice(idx, 1);
@@ -478,7 +510,6 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, execs);
   }
 
- 
   simularPrioridadeAging(
     processos: Processo[],
     cfg: { rate: number }
@@ -504,7 +535,7 @@ export class EscalonamentoService {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      ready.sort((a,b)=> score(a, tempo) - score(b, tempo) || a.tempoChegada - b.tempoChegada);
+      ready.sort((a, b) => score(a, tempo) - score(b, tempo) || a.tempoChegada - b.tempoChegada);
       const cur = ready[0];
 
       execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
@@ -519,30 +550,38 @@ export class EscalonamentoService {
 
   simularMLQ(
     processos: Processo[],
-    cfg: { fgPolitica: 'RR'|'FCFS'; fgQuantum: number; bgPolitica: 'FCFS'|'RR'; bgQuantum: number }
+    cfg: { fgPolitica: 'RR' | 'FCFS'; fgQuantum: number; bgPolitica: 'FCFS' | 'RR'; bgQuantum: number }
   ): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
 
-    type P = Processo & { restante:number; classe:'FG'|'BG' };
+    type P = ProcessoExt & { restante: number; classe: 'FG' | 'BG' };
     const fgQ = Math.max(1, cfg?.fgQuantum ?? 2);
     const bgQ = Math.max(1, cfg?.bgQuantum ?? 4);
-    const fgPol = (cfg?.fgPolitica || 'RR').toUpperCase() as 'RR'|'FCFS';
-    const bgPol = (cfg?.bgPolitica || 'FCFS').toUpperCase() as 'FCFS'|'RR';
+    const fgPol = (cfg?.fgPolitica || 'RR').toUpperCase() as 'RR' | 'FCFS';
+    const bgPol = (cfg?.bgPolitica || 'FCFS').toUpperCase() as 'FCFS' | 'RR';
 
     const base = this.copia(processos);
-    const procs: P[] = base.map(p => ({
-      ...p,
-      restante: p.duracao,
-      classe: (p.prioridade ?? Number.POSITIVE_INFINITY) <= 1 ? 'FG' : 'BG'
-    }));
+    const procs: P[] = base.map(p => {
+      let classe: 'FG' | 'BG';
+      if (p.mlqFilaInicial === 'FG' || p.mlqFilaInicial === 'BG') {
+        classe = p.mlqFilaInicial;
+      } else if (typeof p.mlqFilaInicial === 'number') {
+        classe = p.mlqFilaInicial <= 0 ? 'FG' : 'BG';
+      } else {
+        classe = (p.prioridade ?? Number.POSITIVE_INFINITY) <= 1 ? 'FG' : 'BG';
+      }
+      return { ...p, restante: p.duracao, classe };
+    });
 
     const execs: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
 
-    const done = () => procs.every(p=>p.restante<=0);
+    const done = () => procs.every(p => p.restante <= 0);
 
     const nextArrivalFG = (t: number) => {
-      const arrs = procs.filter(p => p.classe==='FG' && p.restante>0 && p.tempoChegada > t).map(p => p.tempoChegada);
+      const arrs = procs
+        .filter(p => p.classe === 'FG' && p.restante > 0 && p.tempoChegada > t)
+        .map(p => p.tempoChegada);
       return arrs.length ? Math.min(...arrs) : Number.POSITIVE_INFINITY;
     };
 
@@ -550,11 +589,11 @@ export class EscalonamentoService {
     const filaBG: P[] = [];
 
     const enfileirarChegados = () => {
-      procs.filter(p => p.restante>0 && p.tempoChegada <= tempo)
-           .forEach(p => {
-             const fila = p.classe==='FG' ? filaFG : filaBG;
-             if (!fila.includes(p)) fila.push(p);
-           });
+      procs.filter(p => p.restante > 0 && p.tempoChegada <= tempo)
+        .forEach(p => {
+          const fila = p.classe === 'FG' ? filaFG : filaBG;
+          if (!fila.includes(p)) fila.push(p);
+        });
     };
 
     while (!done()) {
@@ -585,8 +624,8 @@ export class EscalonamentoService {
       [filaFG, filaBG].forEach(f => {
         if (!f.length) return;
         if (f[0] === cur) f.shift();
-        if (cur && cur.restante > 0 && ((cur.classe==='FG' && fgPol==='RR') || (cur.classe==='BG' && bgPol==='RR'))) {
-          (cur.classe==='FG' ? filaFG : filaBG).push(cur);
+        if (cur && cur.restante > 0 && ((cur.classe === 'FG' && fgPol === 'RR') || (cur.classe === 'BG' && bgPol === 'RR'))) {
+          (cur.classe === 'FG' ? filaFG : filaBG).push(cur);
         }
       });
 
@@ -596,6 +635,7 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execs));
   }
 
+
   simularRM(
     processos: Processo[],
     cfg: { periodPadrao: number }
@@ -603,23 +643,23 @@ export class EscalonamentoService {
     if (!processos?.length) return this.vazio();
 
     const periodPadrao = Math.max(1, cfg?.periodPadrao ?? 10);
-    type P = ProcessoExt & { restante:number; period:number };
-    const base = this.copia(processos) as ProcessoExt[];
+    type P = Processo & { restante: number; period: number };
+    const base = this.copia(processos);
     const procs: P[] = base.map(p => ({
       ...p,
       restante: p.duracao,
-      period: Math.max(1, (p.period ?? periodPadrao))
+      period: Math.max(1, (p.periodo ?? periodPadrao))
     }));
 
     const execs: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
     const fim = () => procs.every(p => p.restante <= 0);
 
     while (!fim()) {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      ready.sort((a,b)=> a.period - b.period || a.tempoChegada - b.tempoChegada);
+      ready.sort((a, b) => a.period - b.period || a.tempoChegada - b.tempoChegada);
       const cur = ready[0];
 
       execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
@@ -637,8 +677,8 @@ export class EscalonamentoService {
     if (!processos?.length) return this.vazio();
 
     const deadlinePadrao = Math.max(1, cfg?.deadlinePadrao ?? 10);
-    type P = ProcessoExt & { restante:number; drel:number };
-    const base = this.copia(processos) as ProcessoExt[];
+    type P = Processo & { restante: number; drel: number };
+    const base = this.copia(processos);
     const procs: P[] = base.map(p => ({
       ...p,
       restante: p.duracao,
@@ -646,14 +686,14 @@ export class EscalonamentoService {
     }));
 
     const execs: Execucao[] = [];
-    let tempo = Math.min(...procs.map(p=>p.tempoChegada));
+    let tempo = Math.min(...procs.map(p => p.tempoChegada));
     const fim = () => procs.every(p => p.restante <= 0);
 
     while (!fim()) {
       const ready = procs.filter(p => p.tempoChegada <= tempo && p.restante > 0);
       if (!ready.length) { tempo++; continue; }
 
-      ready.sort((a,b)=> a.drel - b.drel || a.tempoChegada - b.tempoChegada);
+      ready.sort((a, b) => a.drel - b.drel || a.tempoChegada - b.tempoChegada);
       const cur = ready[0];
 
       execs.push({ processoId: cur.id, inicio: tempo, fim: tempo + 1 });
