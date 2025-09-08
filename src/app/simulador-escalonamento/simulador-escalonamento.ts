@@ -63,7 +63,8 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   ];
 
   modo: 'lecture' | 'exploration' = 'lecture';
-  page: 'home' | 'add' | 'edit' | 'simulate' = 'home';
+  page: 'home' | 'add' | 'edit' | 'simulate' | 'remove' = 'home';
+
 
   tocando = false;
   passoAtual = 0;
@@ -203,44 +204,47 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
 
   private syncPageFromUrl(url: string) {
-    if (url.startsWith('/aula')) {
-      this.modo = 'lecture';
-      this.page = 'home';
-      return;
-    }
-    this.modo = 'exploration';
-    if (url.startsWith('/adicionar')) this.page = 'add';
-    else if (url.startsWith('/editar')) this.page = 'edit';
-    else if (url.startsWith('/simular')) this.page = 'simulate';
-    else this.page = 'home';
+  if (url.startsWith('/aula')) {
+    this.modo = 'lecture';
+    this.page = 'home';
+    return;
   }
+  this.modo = 'exploration';
+  if (url.startsWith('/adicionar')) this.page = 'add';
+  else if (url.startsWith('/editar')) this.page = 'edit';
+  else if (url.startsWith('/remover')) this.page = 'remove';   
+  else if (url.startsWith('/simular')) this.page = 'simulate';
+  else this.page = 'home';
+}
 
   ngOnInit(): void {
     this.hydrateFromStorage();
 
-    this.route.data.subscribe(d => {
-      this.modo = (d?.['mode'] as any) || this.modo;
-      this.page = (d?.['page'] as any) || this.page;
+   this.route.data.subscribe(d => {
+  this.modo = (d?.['mode'] as any) || this.modo;
+  this.page = (d?.['page'] as any) || this.page;
 
-      if (this.modo !== 'exploration') return;
+  if (this.modo !== 'exploration') return;
 
-      if (this.page === 'add') {
-        this.entrarEmAdicionar();
-      } else if (this.page === 'edit') {
-        this.entrarEmEditar();
-      } else if (this.page === 'simulate') {
-        this.preferirConfig = false;
-        this.mostrarForm = false;
-        this.selecaoModo = null;
-        this.abaDireitaIndex = 0;
-        this.editingId = null;
-        this.originalIdEmEdicao = null;
-      } else {
-        this.selecaoModo = null;
-        this.abaDireitaIndex = 0;
-        this.mostrarForm = !this.temResultados && !this.processos().length;
-      }
-    });
+  if (this.page === 'add') {
+    this.entrarEmAdicionar();
+  } else if (this.page === 'edit') {
+    this.entrarEmEditar();
+  } else if (this.page === 'remove') {
+    this.entrarEmRemover();         // <— NOVO
+  } else if (this.page === 'simulate') {
+    this.preferirConfig = false;
+    this.mostrarForm = false;
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+    this.editingId = null;
+    this.originalIdEmEdicao = null;
+  } else {
+    this.selecaoModo = null;
+    this.abaDireitaIndex = 0;
+    this.mostrarForm = !this.temResultados && !this.processos().length;
+  }
+});
 
     this.syncPageFromUrl(this.router.url);
     this.router.events
@@ -354,14 +358,35 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.limparMensagem();
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
   }
+adicionarDock() {
+  this.limparMensagem();
 
-  adicionarDock() {
-    if (!(this.modo === 'exploration' && this.page === 'add')) {
-      this.router.navigate(['/adicionar']);
-      return;
-    }
+  // SE já estou em /adicionar, apenas tenta salvar o processo atual
+  if (this.modo === 'exploration' && this.page === 'add') {
     this.adicionar();
+    return;
   }
+
+  // SENÃO: prepara o formulário e navega para /adicionar
+  this.editingId = null;
+  this.originalIdEmEdicao = null;
+
+  this.mostrarForm = true;
+  this.preferirConfig = true;
+  this.selecaoModo = null;
+  this.abaDireitaIndex = 0;
+
+  this.formularioProcesso.reset({
+    id: '',
+    tempoChegada: 0,
+    duracao: 1,
+    prioridade: 1
+  });
+
+  this.router.navigate(['/adicionar']);
+}
+
+
 
   adicionar() {
     if (this.formularioProcesso.invalid) {
@@ -487,33 +512,34 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.cancelarEdicao();
     this.voltarParaSimulacao();
   }
+  
+limpar() {
+  this.processos.set([]);
+  this.persistProcessos();
 
-  limpar() {
-    this.processos.set([]);
-    this.persistProcessos();
+  this.resultado = undefined;
+  this.dadosGantt = [];
+  this.metricasDetalhadas = [];
+  this.comparacao = [];
+  this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
+  this.mensagemErro = null;
 
-    this.resultado = undefined;
-    this.dadosGantt = [];
-    this.metricasDetalhadas = [];
-    this.comparacao = [];
-    this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
-    this.mensagemErro = null;
-    this.mostrarForm = false;
-    this.cancelarEdicao();
-    this.resultadoConfirmado = undefined;
-    this.comparacaoConfirmada = [];
-    this.dadosGanttConfirmado = [];
-    this.resultadosMulti = {};
-    this.ganttMulti = {};
-    this.coresGanttMulti = {};
-    this.paletaProcessos = {};
-    this.kpisResumo = undefined;
-    this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
-    this.persistAlgoritmos();
-    this.ultimaSelecaoAlgoritmos = [];
-    this.preferirConfig = false;
-    this.voltarParaSimulacao();
-  }
+  this.resultadoConfirmado = undefined;
+  this.comparacaoConfirmada = [];
+  this.dadosGanttConfirmado = [];
+  this.resultadosMulti = {};
+  this.ganttMulti = {};
+  this.coresGanttMulti = {};
+  this.paletaProcessos = {};
+  this.kpisResumo = undefined;
+
+  this.formularioConfig.controls.algoritmo.setValue([], { emitEvent: false });
+  this.persistAlgoritmos();
+  this.ultimaSelecaoAlgoritmos = [];
+  this.irParaNovoProcesso();
+  this.router.navigate(['/adicionar']);
+}
+
 
 private rolarParaResultados() {
   setTimeout(() => {
@@ -873,13 +899,20 @@ private rolarParaResultados() {
   }
 
   escolherNaLista(id: string) {
-    const p = this.processos().find(x => x.id === id);
-    if (!p) { this.voltarParaSimulacao(); return; }
-    if (this.selecaoModo === 'editar') this.editar(p);
-    else if (this.selecaoModo === 'remover') this.remover(id);
+  const p = this.processos().find(x => x.id === id);
+  if (!p) { this.voltarParaSimulacao(); return; }
+
+  if (this.selecaoModo === 'editar') {
+    this.editar(p);
     this.selecaoModo = null;
     this.abaDireitaIndex = 0;
+  } else if (this.selecaoModo === 'remover') {
+    this.remover(id);
+    this.selecaoModo = 'remover';
+    this.abaDireitaIndex = 1;
   }
+}
+
 
   editarDock() {
     if (!(this.modo === 'exploration' && this.page === 'edit')) {
@@ -895,11 +928,11 @@ private rolarParaResultados() {
     }
   }
 
-  removerDock() {
-    if (!this.processos().length) return;
-    if (this.editingId) { this.remover(this.editingId); return; }
-    this.abrirSelecao('remover');
-  }
+ removerDock() {
+  if (!this.processos().length) return;
+  this.router.navigate(['/remover']);  // em qualquer tela, inclusive /simular
+}
+
 
   async simularDock() {
     this.limparMensagem();
@@ -919,4 +952,13 @@ private rolarParaResultados() {
       { queryParams: { run: '1', t: Date.now() }, queryParamsHandling: 'merge' }
     );
   }
+
+  private entrarEmRemover() {
+  this.preferirConfig = true;   // mantém config à direita, como nas outras telas
+  this.mostrarForm = false;
+  this.selecaoModo = 'remover';
+  this.abaDireitaIndex = 1;     // seleciona a aba "Remover processo"
+  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+}
+
 }
