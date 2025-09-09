@@ -17,25 +17,40 @@
 <main class="layout" [ngClass]="{ 'comparacao-full': isComparacaoAtiva }">
   <section class="painel-left">
     <ng-container *ngIf="isComparacaoAtiva; else tabsLecture">
-      <div class="va-panel chart-full">
-        <div class="chart-toolbar">
-          <h3 class="va-title">Comparação — gráfico</h3>
-          <div class="grow"></div>
-          <label class="va-label">Ver:</label>
-          <mat-button-toggle-group [(ngModel)]="chartSelecionado" [ngModelOptions]="{standalone: true}" [value]="chartSelecionado" name="grafSel" class="chart-toggle" [multiple]="false">
-            <mat-button-toggle value="espera">Espera média</mat-button-toggle>
-            <mat-button-toggle value="retorno">Retorno médio</mat-button-toggle>
-            <mat-button-toggle value="resposta">Resposta média</mat-button-toggle>
-            <mat-button-toggle value="justica">Justiça (Jain)</mat-button-toggle>
-          </mat-button-toggle-group>
-        </div>
+      <div class="chart-toolbar">
+        <h3 class="va-title">Comparação — gráfico</h3>
+        <div class="grow"></div>
 
-        <div class="chart-host" [ngSwitch]="chartSelecionado">
-          <ngx-charts-bar-vertical *ngSwitchCase="'espera'" [results]="dadosComparacao.espera" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
-          <ngx-charts-bar-vertical *ngSwitchCase="'retorno'" [results]="dadosComparacao.retorno" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
-          <ngx-charts-bar-vertical *ngSwitchCase="'resposta'" [results]="dadosComparacao.resposta" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
-          <ngx-charts-bar-vertical *ngSwitchCase="'justica'" [results]="dadosComparacao.justica" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
-        </div>
+        <mat-form-field appearance="outline" class="chart-select" style="min-width:260px">
+          <mat-label>Ver</mat-label>
+          <mat-select [(ngModel)]="chartSelecionado" [ngModelOptions]="{standalone:true}">
+            <mat-option value="espera">Espera média</mat-option>
+            <mat-option value="retorno">Retorno médio</mat-option>
+            <mat-option value="resposta">Resposta média</mat-option>
+            <mat-option value="justica">Justiça (Jain)</mat-option>
+            <mat-divider></mat-divider>
+            <mat-option value="makespan">Makespan</mat-option>
+            <mat-option value="utilizacao">Utilização da CPU</mat-option>
+            <mat-option value="ociosidade">Ociosidade</mat-option>
+            <mat-option value="throughput">Throughput</mat-option>
+            <mat-option value="ctxSwitches">Trocas de contexto</mat-option>
+            <mat-divider></mat-divider>
+            <mat-option value="slowdownMedio">Slowdown médio</mat-option>
+            <mat-option value="slowdownMax">Slowdown máximo</mat-option>
+            <mat-divider></mat-divider>
+            <mat-option value="dpEspera">DP (espera)</mat-option>
+            <mat-option value="dpRetorno">DP (retorno)</mat-option>
+            <mat-option value="dpResposta">DP (resposta)</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+
+      <div class="chart-host">
+        <ngx-charts-bar-vertical
+          [results]="getDadosComparacao(chartSelecionado)"
+          [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true"
+          [scheme]="colorScheme">
+        </ngx-charts-bar-vertical>
       </div>
     </ng-container>
 
@@ -293,6 +308,16 @@
               <p><strong>Espera média:</strong> {{ resultado.tempoMedioEspera }}</p>
               <p><strong>Retorno médio:</strong> {{ resultado.tempoMedioRetorno }}</p>
               <p><strong>Resposta média:</strong> {{ resultado.tempoMedioResposta }}</p>
+
+              <mat-divider></mat-divider>
+              <h4 style="margin-top:10px">KPIs gerais</h4>
+              <ng-container *ngIf="kpisResumo as k">
+                <p><strong>Makespan:</strong> {{ k.makespan }}</p>
+                <p><strong>Utilização da CPU:</strong> {{ k.utilizacaoCpu }}</p>
+                <p><strong>Ociosidade:</strong> {{ k.ociosidade }}</p>
+                <p><strong>Throughput:</strong> {{ k.throughput }}</p>
+                <p><strong>Trocas de contexto:</strong> {{ k.ctxSwitches }}</p>
+              </ng-container>
             </div>
 
             <div class="va-panel">
@@ -330,7 +355,7 @@
 
           <section class="va-grid" *ngIf="!resultado && comparacao.length">
             <div class="va-panel">
-              <h3 class="va-title">Resumo (médias por algoritmo)</h3>
+              <h3 class="va-title">Resumo — médias por algoritmo</h3>
               <table class="va-table">
                 <thead>
                   <tr>
@@ -353,27 +378,75 @@
               </table>
             </div>
 
+            <div class="va-panel">
+              <h3 class="va-title">Gerais / dispersão</h3>
+              <table class="va-table">
+                <thead>
+                  <tr>
+                    <th>Algoritmo</th>
+                    <th>Makespan</th>
+                    <th>Utilização</th>
+                    <th>Ociosidade</th>
+                    <th>Throughput</th>
+                    <th>Ctx</th>
+                    <th>Slowdown médio</th>
+                    <th>Slowdown máx</th>
+                    <th>DP Espera</th>
+                    <th>DP Retorno</th>
+                    <th>DP Resposta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let c of comparacao">
+                    <td>{{ c.algoritmo }}</td>
+                    <td class="num">{{ c.makespan }}</td>
+                    <td class="num">{{ c.utilizacao }}</td>
+                    <td class="num">{{ c.ociosidade }}</td>
+                    <td class="num">{{ c.throughput }}</td>
+                    <td class="num">{{ c.ctxSwitches }}</td>
+                    <td class="num">{{ c.slowdownMedio }}</td>
+                    <td class="num">{{ c.slowdownMax }}</td>
+                    <td class="num">{{ c.dpEspera }}</td>
+                    <td class="num">{{ c.dpRetorno }}</td>
+                    <td class="num">{{ c.dpResposta }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
             <div class="va-panel" *ngIf="!isComparacaoAtiva">
-              <h3 class="va-title">Comparação — gráficos</h3>
+              <h3 class="va-title">Comparação — mini gráficos</h3>
               <div class="cmp-grid-4">
                 <div class="mini-chart">
                   <div class="mini-title">Espera média</div>
-                  <ngx-charts-bar-vertical [results]="dadosComparacao.espera" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
+                  <ngx-charts-bar-vertical
+                    [results]="dadosComparacao.espera" [xAxis]="true" [yAxis]="true"
+                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                  </ngx-charts-bar-vertical>
                 </div>
 
                 <div class="mini-chart">
                   <div class="mini-title">Retorno médio</div>
-                  <ngx-charts-bar-vertical [results]="dadosComparacao.retorno" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
+                  <ngx-charts-bar-vertical
+                    [results]="dadosComparacao.retorno" [xAxis]="true" [yAxis]="true"
+                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                  </ngx-charts-bar-vertical>
                 </div>
 
                 <div class="mini-chart">
                   <div class="mini-title">Resposta média</div>
-                  <ngx-charts-bar-vertical [results]="dadosComparacao.resposta" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
+                  <ngx-charts-bar-vertical
+                    [results]="dadosComparacao.resposta" [xAxis]="true" [yAxis]="true"
+                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                  </ngx-charts-bar-vertical>
                 </div>
 
                 <div class="mini-chart">
                   <div class="mini-title">Justiça (Jain)</div>
-                  <ngx-charts-bar-vertical [results]="dadosComparacao.justica" [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true" [scheme]="colorScheme"></ngx-charts-bar-vertical>
+                  <ngx-charts-bar-vertical
+                    [results]="dadosComparacao.justica" [xAxis]="true" [yAxis]="true"
+                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                  </ngx-charts-bar-vertical>
                 </div>
               </div>
             </div>
@@ -409,6 +482,7 @@
                   <tr><td>Justiça (Jain)</td><td class="num">{{ getJustica(algo) | number:'1.3-3' }}</td></tr>
                 </tbody>
               </table>
+            
             </div>
           </section>
         </ng-template>

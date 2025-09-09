@@ -20,7 +20,7 @@ import { NgxChartsModule, Color, ScaleType } from '@swimlane/ngx-charts';
 import { RouterModule, ActivatedRoute, Router, NavigationEnd } from '@angular/router';
 import { EscalonamentoService } from '../escalonamento.service';
 import { Processo } from '../models/processo';
-import { ResultadoSimulacao } from '../models/resultado-simulacao';
+import { ResultadoSimulacao, ResultadoComparacao } from '../models/resultado-simulacao';
 import { filter } from 'rxjs/operators';
 
 type Algoritmo =
@@ -28,13 +28,11 @@ type Algoritmo =
   | 'MLFQ' | 'LOTTERY' | 'STRIDE' | 'FAIR' | 'CFS'
   | 'HRRN' | 'PRIORIDADE_AGING' | 'MLQ' | 'RM' | 'DM';
 
-type ResultadoComparacao = {
-  algoritmo: Algoritmo;
-  espera: number;
-  retorno: number;
-  resposta: number;
-  justica: number;
-};
+type ChartKey =
+  | 'espera' | 'retorno' | 'resposta' | 'justica'
+  | 'makespan' | 'utilizacao' | 'ociosidade' | 'throughput' | 'ctxSwitches'
+  | 'slowdownMedio' | 'slowdownMax'
+  | 'dpEspera' | 'dpRetorno' | 'dpResposta';
 
 @Component({
   selector: 'app-simulador-escalonamento',
@@ -153,7 +151,10 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     justica: [] as { name: string; value: number }[],
   };
 
-  chartSelecionado: 'espera' | 'retorno' | 'resposta' | 'justica' = 'retorno';
+  chartSelecionado: ChartKey = 'retorno';
+  getDadosComparacao(chave: ChartKey) {
+    return this.comparacao.map(c => ({ name: c.algoritmo, value: (c as any)[chave] as number }));
+  }
 
   private resultadoConfirmado?: ResultadoSimulacao;
   private comparacaoConfirmada: ResultadoComparacao[] = [];
@@ -739,7 +740,16 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         const pack = this.montarGanttComCores(r.execucoes);
         this.dadosGantt = pack.dados;
         this.calcularMetricasPorProcesso();
-        this.calcularKpisResumo(listaCopia, r.execucoes);
+
+        const ex = this.svc.calcularExtrasGerais(listaCopia, r.execucoes);
+        this.kpisResumo = {
+          makespan: ex.makespan,
+          totalExec: (ex as any).totalExec,
+          ociosidade: ex.ociosidade,
+          utilizacaoCpu: ex.utilizacaoCpu,
+          throughput: ex.throughput,
+          ctxSwitches: ex.ctxSwitches
+        };
 
         this.resultadoConfirmado = JSON.parse(JSON.stringify(this.resultado));
         this.comparacaoConfirmada = [];
@@ -758,7 +768,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         try {
           const listaCopia: Processo[] = base.map(p => ({ ...p }));
           const r = this.executarAlgoritmo(algo, listaCopia, q, opts);
-          const justica = this.calcularJusticaPorEspera(r, listaCopia);
+
+          const justica = this.svc.calcularJusticaPorEspera(r, listaCopia);
+          const extras  = this.svc.calcularExtrasGerais(listaCopia, r.execucoes);
 
           this.resultadosMulti[algo] = r;
           const { dados, custom } = this.montarGanttComCores(r.execucoes);
@@ -766,15 +778,31 @@ export class SimuladorEscalonamentoComponent implements OnInit {
           this.coresGanttMulti[algo] = custom;
 
           this.comparacao.push({
-            algoritmo: algo,
+            algoritmo: algo as any,
             espera: r.tempoMedioEspera,
             retorno: r.tempoMedioRetorno,
             resposta: r.tempoMedioResposta,
-            justica
+            justica: justica,
+
+            makespan: extras.makespan,
+            utilizacao: extras.utilizacaoCpu,
+            ociosidade: extras.ociosidade,
+            throughput: extras.throughput,
+            ctxSwitches: extras.ctxSwitches,
+            slowdownMedio: extras.slowdownMedio,
+            slowdownMax: extras.slowdownMax,
+            dpEspera: extras.dpEspera,
+            dpRetorno: extras.dpRetorno,
+            dpResposta: extras.dpResposta
           });
         } catch (e) {
           console.error(`[${algo}] falhou`, e);
-          this.comparacao.push({ algoritmo: algo, espera: NaN, retorno: NaN, resposta: NaN, justica: NaN });
+          this.comparacao.push({
+            algoritmo: algo as any,
+            espera: NaN, retorno: NaN, resposta: NaN, justica: NaN,
+            makespan: NaN, utilizacao: NaN, ociosidade: NaN, throughput: NaN, ctxSwitches: NaN,
+            slowdownMedio: NaN, slowdownMax: NaN, dpEspera: NaN, dpRetorno: NaN, dpResposta: NaN
+          });
         }
       }
 
@@ -854,7 +882,16 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.resultado = r;
       this.dadosGantt = pack.dados;
       this.calcularMetricasPorProcesso();
-      this.calcularKpisResumo(listaPreview, r.execucoes);
+
+      const ex = this.svc.calcularExtrasGerais(listaPreview, r.execucoes);
+      this.kpisResumo = {
+        makespan: ex.makespan,
+        totalExec: (ex as any).totalExec,
+        ociosidade: ex.ociosidade,
+        utilizacaoCpu: ex.utilizacaoCpu,
+        throughput: ex.throughput,
+        ctxSwitches: ex.ctxSwitches
+      };
     } else {
       this.resultado = undefined;
       this.dadosGantt = [];
@@ -866,13 +903,32 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.kpisResumo = undefined;
 
       for (const algo of selecionados) {
-        const r = this.executarAlgoritmo(algo, listaPreview.map(p => ({ ...p })), q, opts);
-        const justica = this.calcularJusticaPorEspera(r, listaPreview);
-        this.comparacao.push({ algoritmo: algo, espera: r.tempoMedioEspera, retorno: r.tempoMedioRetorno, resposta: r.tempoMedioResposta, justica });
+        const r = this.executarAlgoritmo(algo as Algoritmo, listaPreview.map(p => ({ ...p })), q, opts);
+        const justica = this.svc.calcularJusticaPorEspera(r, listaPreview);
+        const extras  = this.svc.calcularExtrasGerais(listaPreview, r.execucoes);
+
+        this.comparacao.push({
+          algoritmo: algo as any,
+          espera: r.tempoMedioEspera,
+          retorno: r.tempoMedioRetorno,
+          resposta: r.tempoMedioResposta,
+          justica,
+          makespan: extras.makespan,
+          utilizacao: extras.utilizacaoCpu,
+          ociosidade: extras.ociosidade,
+          throughput: extras.throughput,
+          ctxSwitches: extras.ctxSwitches,
+          slowdownMedio: extras.slowdownMedio,
+          slowdownMax: extras.slowdownMax,
+          dpEspera: extras.dpEspera,
+          dpRetorno: extras.dpRetorno,
+          dpResposta: extras.dpResposta
+        });
+
         const { dados, custom } = this.montarGanttComCores(r.execucoes);
-        this.resultadosMulti[algo] = r;
-        this.ganttMulti[algo] = dados;
-        this.coresGanttMulti[algo] = custom;
+        this.resultadosMulti[algo as Algoritmo] = r;
+        this.ganttMulti[algo as Algoritmo] = dados;
+        this.coresGanttMulti[algo as Algoritmo] = custom;
       }
       this.atualizarGraficosComparacao();
     }
@@ -905,27 +961,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       case 'RM':               return this.svc.simularRM(lista, opts.rm);
       case 'DM':               return this.svc.simularDM(lista, opts.dm);
     }
-  }
-
-  private jain(valores: number[]): number {
-    if (!valores.length) return 0;
-    const soma = valores.reduce((a,b)=>a+b,0);
-    const soma2 = valores.reduce((a,b)=>a+b*b,0);
-    return soma === 0 ? 0 : +((soma*soma) / (valores.length * soma2)).toFixed(3);
-  }
-
-  private calcularJusticaPorEspera(exec: ResultadoSimulacao, lista: Processo[]): number {
-    const mapa = new Map<string, { primeiro: number; fim: number; exec: number; chegada: number }>();
-    for (const p of lista) mapa.set(p.id, { primeiro: Number.POSITIVE_INFINITY, fim: 0, exec: 0, chegada: p.tempoChegada });
-    for (const e of exec.execucoes) {
-      const m = mapa.get(e.processoId)!;
-      m.primeiro = Math.min(m.primeiro, e.inicio);
-      m.fim = Math.max(m.fim, e.fim);
-      m.exec += (e.fim - e.inicio);
-    }
-    const esperas = [...mapa.values()].map(m => (m.fim - m.chegada) - m.exec);
-    const equidade = esperas.map(w => 1 / (w + 1));
-    return this.jain(equidade);
   }
 
   private montarGanttComCores(execs: { processoId: string; inicio: number; fim: number }[]) {
@@ -967,21 +1002,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
 
   kpisResumo?: { makespan: number; totalExec: number; ociosidade: number; utilizacaoCpu: number; throughput: number; ctxSwitches: number; };
-
-  private calcularKpisResumo(lista: Processo[], execs: { processoId: string; inicio: number; fim: number }[]) {
-    if (!execs.length) { this.kpisResumo = undefined; return; }
-    const chegadaMin = Math.min(...lista.map(p => p.tempoChegada));
-    const fimMax = Math.max(...execs.map(e => e.fim));
-    const inicioMinExec = Math.min(...execs.map(e => e.inicio));
-    const totalExec = execs.reduce((s, e) => s + (e.fim - e.inicio), 0);
-    const makespan = fimMax - Math.min(chegadaMin, inicioMinExec);
-    const ociosidade = Math.max(0, makespan - totalExec);
-    const utilizacao = makespan > 0 ? totalExec / makespan : 0;
-    const throughput = makespan > 0 ? lista.length / makespan : lista.length;
-    let ctxSwitches = 0;
-    for (let i = 1; i < execs.length; i++) if (execs[i].processoId !== execs[i - 1].processoId) ctxSwitches++;
-    this.kpisResumo = { makespan, totalExec, ociosidade, utilizacaoCpu: +utilizacao.toFixed(3), throughput: +throughput.toFixed(3), ctxSwitches };
-  }
 
   private construirPaletaProcessos(processos: Processo[]) {
     const todos = [...new Set(processos.map(p => p.id))].sort();

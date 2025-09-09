@@ -8,6 +8,7 @@ type ProcessoExt = Processo & { classe?: 'FG' | 'BG' };
 @Injectable({ providedIn: 'root' })
 export class EscalonamentoService {
 
+
   private vazio(): ResultadoSimulacao {
     return { execucoes: [], tempoMedioEspera: 0, tempoMedioRetorno: 0, tempoMedioResposta: 0 };
   }
@@ -34,13 +35,14 @@ export class EscalonamentoService {
   private calcularMetricas(processos: Processo[], execucoes: Execucao[]): ResultadoSimulacao {
     if (!processos.length) return this.vazio();
 
-    const mapa = new Map<string, { primeiroInicio: number; conclusao: number; totalExecutado: number }>();
+    const mapa = new Map<string, { primeiroInicio: number; conclusao: number; totalExecutado: number; chegada: number }>();
     for (const p of processos) {
-      mapa.set(p.id, { primeiroInicio: Number.POSITIVE_INFINITY, conclusao: 0, totalExecutado: 0 });
+      mapa.set(p.id, { primeiroInicio: Number.POSITIVE_INFINITY, conclusao: 0, totalExecutado: 0, chegada: p.tempoChegada });
     }
 
     for (const e of execucoes) {
-      const m = mapa.get(e.processoId)!;
+      const m = mapa.get(e.processoId);
+      if (!m) continue; 
       m.primeiroInicio = Math.min(m.primeiroInicio, e.inicio);
       m.conclusao = Math.max(m.conclusao, e.fim);
       m.totalExecutado += (e.fim - e.inicio);
@@ -70,7 +72,6 @@ export class EscalonamentoService {
       tempoMedioResposta: +media(resposta).toFixed(2),
     };
   }
-
 
   simularFCFS(processos: Processo[]): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
@@ -230,7 +231,6 @@ export class EscalonamentoService {
     return this.calcularMetricas(porChegada, execucoes);
   }
 
-
   simularMLFQ(
     processos: Processo[],
     cfg: { niveis: number; quantumBase: number; boost: number }
@@ -258,7 +258,7 @@ export class EscalonamentoService {
     const empurrarChegadas = () => {
       procs
         .filter(p => p.tempoChegada <= tempo && p.restante > 0 && !filas.some(f => f.includes(p)))
-        .forEach(p => filas[p.nivel].push(p)); 
+        .forEach(p => filas[p.nivel].push(p));
     };
 
     const allDone = () => procs.every(p => p.restante <= 0);
@@ -296,7 +296,6 @@ export class EscalonamentoService {
 
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
-
 
   simularLottery(
     processos: Processo[],
@@ -437,7 +436,6 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
 
- 
   simularCFS(
     processos: Processo[],
     cfg: { nicePadrao: number }
@@ -476,7 +474,6 @@ export class EscalonamentoService {
 
     return this.calcularMetricas(base, this.fundirAdjacentes(execucoes));
   }
-
 
   simularHRRN(processos: Processo[]): ResultadoSimulacao {
     if (!processos?.length) return this.vazio();
@@ -546,7 +543,6 @@ export class EscalonamentoService {
 
     return this.calcularMetricas(base, this.fundirAdjacentes(execs));
   }
-
 
   simularMLQ(
     processos: Processo[],
@@ -635,7 +631,6 @@ export class EscalonamentoService {
     return this.calcularMetricas(base, this.fundirAdjacentes(execs));
   }
 
-
   simularRM(
     processos: Processo[],
     cfg: { periodPadrao: number }
@@ -702,5 +697,88 @@ export class EscalonamentoService {
     }
 
     return this.calcularMetricas(base, this.fundirAdjacentes(execs));
+  }
+
+  
+  calcularJusticaPorEspera(exec: ResultadoSimulacao, lista: Processo[]): number {
+    const mapa = new Map<string, { primeiro: number; fim: number; exec: number; chegada: number }>();
+    for (const p of lista) mapa.set(p.id, { primeiro: Number.POSITIVE_INFINITY, fim: 0, exec: 0, chegada: p.tempoChegada });
+    for (const e of exec.execucoes) {
+      const m = mapa.get(e.processoId);
+      if (!m) continue;
+      m.primeiro = Math.min(m.primeiro, e.inicio);
+      m.fim = Math.max(m.fim, e.fim);
+      m.exec += (e.fim - e.inicio);
+    }
+    const esperas = [...mapa.values()].map(m => (m.fim - m.chegada) - m.exec);
+    const soma = esperas.reduce((a, b) => a + b, 0);
+    const soma2 = esperas.reduce((a, b) => a + b * b, 0);
+    if (!esperas.length || soma === 0) return 0;
+    return +((soma * soma) / (esperas.length * soma2)).toFixed(3);
+  }
+
+  private dp(val: number[]): number {
+    if (!val.length) return 0;
+    const m = val.reduce((a, b) => a + b, 0) / val.length;
+    const v = val.reduce((s, x) => s + (x - m) * (x - m), 0) / val.length;
+    return +Math.sqrt(v).toFixed(2);
+  }
+
+  private metricasIndividuais(lista: Processo[], execs: Execucao[]) {
+    const mapa = new Map<string, { primeiro: number; fim: number; exec: number; chegada: number; dur: number }>();
+    for (const p of lista) mapa.set(p.id, { primeiro: Number.POSITIVE_INFINITY, fim: 0, exec: 0, chegada: p.tempoChegada, dur: p.duracao });
+    for (const e of execs) {
+      const m = mapa.get(e.processoId);
+      if (!m) continue;
+      m.primeiro = Math.min(m.primeiro, e.inicio);
+      m.fim = Math.max(m.fim, e.fim);
+      m.exec += (e.fim - e.inicio);
+    }
+    const det = [...mapa.values()].map(m => {
+      const primeiro = isFinite(m.primeiro) ? m.primeiro : m.chegada;
+      const retorno = m.fim - m.chegada;
+      const espera = retorno - m.exec;
+      const resposta = primeiro - m.chegada;
+      const slowdown = m.dur > 0 ? retorno / m.dur : 0;
+      return { espera, retorno, resposta, slowdown };
+    });
+    return {
+      esperas: det.map(d => d.espera),
+      retornos: det.map(d => d.retorno),
+      respostas: det.map(d => d.resposta),
+      slowdownMedio: det.length ? +(det.reduce((s, d) => s + d.slowdown, 0) / det.length).toFixed(2) : 0,
+      slowdownMax: det.length ? +Math.max(...det.map(d => d.slowdown)).toFixed(2) : 0,
+    };
+  }
+
+  /** KPIs gerais (makespan, utilização, ociosidade, throughput, ctxSwitches) + dispersões e slowdowns */
+  calcularExtrasGerais(lista: Processo[], execs: Execucao[]) {
+    if (!execs.length) {
+      return {
+        makespan: 0, totalExec: 0, ociosidade: 0, utilizacaoCpu: 0, throughput: 0, ctxSwitches: 0,
+        slowdownMedio: 0, slowdownMax: 0, dpEspera: 0, dpRetorno: 0, dpResposta: 0
+      };
+    }
+    const chegadaMin = Math.min(...lista.map(p => p.tempoChegada));
+    const fimMax = Math.max(...execs.map(e => e.fim));
+    const inicioMin = Math.min(...execs.map(e => e.inicio));
+    const totalExec = execs.reduce((s, e) => s + (e.fim - e.inicio), 0);
+    const makespan = fimMax - Math.min(chegadaMin, inicioMin);
+    const ociosidade = Math.max(0, makespan - totalExec);
+    const utilizacaoCpu = makespan > 0 ? +(totalExec / makespan).toFixed(3) : 0;
+    const throughput = makespan > 0 ? +(lista.length / makespan).toFixed(3) : lista.length;
+    let ctxSwitches = 0;
+    for (let i = 1; i < execs.length; i++) if (execs[i].processoId !== execs[i - 1].processoId) ctxSwitches++;
+
+    const det = this.metricasIndividuais(lista, execs);
+    const dpEspera = this.dp(det.esperas);
+    const dpRetorno = this.dp(det.retornos);
+    const dpResposta = this.dp(det.respostas);
+
+    return {
+      makespan, totalExec, ociosidade, utilizacaoCpu, throughput, ctxSwitches,
+      slowdownMedio: det.slowdownMedio, slowdownMax: det.slowdownMax,
+      dpEspera, dpRetorno, dpResposta
+    };
   }
 }
