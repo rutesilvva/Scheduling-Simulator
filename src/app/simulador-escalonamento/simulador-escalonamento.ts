@@ -20,15 +20,34 @@ import { NgxChartsModule, Color, ScaleType } from '@swimlane/ngx-charts';
 import { RouterModule, ActivatedRoute, Router, NavigationEnd } from '@angular/router';
 import { EscalonamentoService } from '../escalonamento.service';
 import { Processo } from '../models/processo';
-import { ResultadoSimulacao, ResultadoComparacao } from '../models/resultado-simulacao';
+import { ResultadoSimulacao } from '../models/resultado-simulacao';
 import { filter } from 'rxjs/operators';
+import { MatMenuModule } from '@angular/material/menu';
 
 type Algoritmo =
   | 'FCFS' | 'SJF' | 'SRTF' | 'RR' | 'PRIORIDADE'
   | 'MLFQ' | 'LOTTERY' | 'STRIDE' | 'FAIR' | 'CFS'
   | 'HRRN' | 'PRIORIDADE_AGING' | 'MLQ' | 'RM' | 'DM';
 
-type ChartKey =
+type ResultadoComparacao = {
+  algoritmo: Algoritmo;
+  espera: number;
+  retorno: number;
+  resposta: number;
+  justica: number;
+  makespan: number;
+  utilizacao: number;
+  ociosidade: number;
+  throughput: number;
+  ctxSwitches: number;
+  slowdownMedio: number;
+  slowdownMax: number;
+  dpEspera: number;
+  dpRetorno: number;
+  dpResposta: number;
+};
+
+type ChartTipo =
   | 'espera' | 'retorno' | 'resposta' | 'justica'
   | 'makespan' | 'utilizacao' | 'ociosidade' | 'throughput' | 'ctxSwitches'
   | 'slowdownMedio' | 'slowdownMax'
@@ -43,7 +62,7 @@ type ChartKey =
     MatIconModule, MatTableModule, MatChipsModule, MatSlideToggleModule,
     MatToolbarModule, MatTabsModule, MatDividerModule, MatTooltipModule,
     MatProgressBarModule, MatButtonToggleModule, NgxChartsModule,
-    RouterModule,
+    RouterModule, MatMenuModule
   ],
   templateUrl: './simulador-escalonamento.component.html',
   styleUrls: ['./simulador-escalonamento.component.css']
@@ -62,6 +81,31 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   modo: 'lecture' | 'exploration' = 'lecture';
   page: 'home' | 'add' | 'edit' | 'simulate' | 'remove' = 'home';
+
+  private _runFlag = false;
+  get showChartQuickSelect(): boolean {
+    return this.modo === 'exploration' && this.page === 'simulate' && this._runFlag;
+  }
+
+  chartLabel: Record<ChartTipo, string> = {
+    espera: 'Espera média',
+    retorno: 'Retorno médio',
+    resposta: 'Resposta média',
+    justica: 'Justiça (Jain)',
+    makespan: 'Makespan',
+    utilizacao: 'Utilização da CPU',
+    ociosidade: 'Ociosidade',
+    throughput: 'Throughput',
+    ctxSwitches: 'Trocas de contexto',
+    slowdownMedio: 'Slowdown médio',
+    slowdownMax: 'Slowdown máximo',
+    dpEspera: 'DP (espera)',
+    dpRetorno: 'DP (retorno)',
+    dpResposta: 'DP (resposta)',
+  };
+
+  chartResults: { name: string; value: number }[] = [];
+  chartSelecionado: ChartTipo = 'retorno';
 
   tocando = false;
   passoAtual = 0;
@@ -150,11 +194,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     resposta: [] as { name: string; value: number }[],
     justica: [] as { name: string; value: number }[],
   };
-
-  chartSelecionado: ChartKey = 'retorno';
-  getDadosComparacao(chave: ChartKey) {
-    return this.comparacao.map(c => ({ name: c.algoritmo, value: (c as any)[chave] as number }));
-  }
 
   private resultadoConfirmado?: ResultadoSimulacao;
   private comparacaoConfirmada: ResultadoComparacao[] = [];
@@ -269,7 +308,8 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       .subscribe(e => this.syncPageFromUrl(e.urlAfterRedirects));
 
     this.route.queryParamMap.subscribe(params => {
-      if (params.get('run') === '1') {
+      this._runFlag = params.get('run') === '1';
+      if (this._runFlag) {
         Promise.resolve().then(() => this.simular());
       }
     });
@@ -290,6 +330,8 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
     this.formularioConfig.controls.algoritmo.valueChanges?.subscribe(() => this.syncExtraFields());
     this.syncExtraFields();
+
+    this.updateChartResultsFromSelection();
   }
 
   private syncExtraFields() {
@@ -324,6 +366,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
     this.resultado = undefined;
     this.dadosGantt = [];
+    this.metricasDetalhadas = [];
     this.comparacao = [];
     this.dadosComparacao = { espera: [], retorno: [], resposta: [], justica: [] };
     this.resultadosMulti = {};
@@ -392,8 +435,8 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   get totalPassos(): number { return this.resultado?.execucoes?.length ?? 0; }
   tocar() {
     if (!this.resultado || !this.totalPassos) return;
-    this.tocando = true;
     const passoMs = Math.max(200, 600 / this.velocidade);
+    this.tocando = true;
     this.timer = setInterval(() => {
       this.proximoPasso();
       if (this.passoAtual >= this.totalPassos - 1) this.pausar();
@@ -473,6 +516,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     }
 
     const raw = this.formularioProcesso.getRawValue();
+
     const p: Processo = {
       id: String(raw.id).trim(),
       tempoChegada: Number(raw.tempoChegada),
@@ -608,9 +652,9 @@ export class SimuladorEscalonamentoComponent implements OnInit {
 
   preencherExemplo() {
     this.processos.set([
-      { id: 'P1', tempoChegada: 0, duracao: 8, prioridade: 3, tickets: 80, share: 1, nice: 0, mlqFilaInicial: 'FG', mlfqNivelInicial: 0, periodo: 12, deadline: 8 },
-      { id: 'P2', tempoChegada: 1, duracao: 4, prioridade: 2, tickets: 120, share: 2, nice: 5, mlqFilaInicial: 'BG', mlfqNivelInicial: 1, periodo: 10, deadline: 6 },
-      { id: 'P3', tempoChegada: 2, duracao: 9, prioridade: 1, tickets: 60, share: 1, nice: -2, mlqFilaInicial: 'BG', mlfqNivelInicial: 2, periodo: 14, deadline: 7 },
+      { id: 'P1', tempoChegada: 0, duracao: 8, prioridade: 3, tickets: 80,  share: 1, nice: 0,  mlqFilaInicial: 'FG', mlfqNivelInicial: 0, periodo: 12, deadline: 8 },
+      { id: 'P2', tempoChegada: 1, duracao: 4, prioridade: 2, tickets: 120, share: 2, nice: 5,  mlqFilaInicial: 'BG', mlfqNivelInicial: 1, periodo: 10, deadline: 6 },
+      { id: 'P3', tempoChegada: 2, duracao: 9, prioridade: 1, tickets: 60,  share: 1, nice: -2, mlqFilaInicial: 'BG', mlfqNivelInicial: 2, periodo: 14, deadline: 7 },
       { id: 'P4', tempoChegada: 3, duracao: 5, prioridade: 2, tickets: 200, share: 3, nice: 10, mlqFilaInicial: 'FG', mlfqNivelInicial: 0, periodo: 8,  deadline: 5 },
     ]);
     this.persistProcessos();
@@ -664,7 +708,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
   }
 
   private ensureAlgoritmosSelecionados(): void {
-    let algos = this.algoritmosSelecionados;
+    const algos = this.algoritmosSelecionados;
     if (!algos.length) {
       const fallback: Algoritmo[] =
         (this.ultimaSelecaoAlgoritmos && this.ultimaSelecaoAlgoritmos.length)
@@ -692,12 +736,13 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         this.preferirConfig = true;
         this.abaDireitaIndex = 0;
         setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+        this.updateChartResultsFromSelection();
         return;
       }
 
       this.ensureAlgoritmosSelecionados();
 
-      let selecionados = Array.from(new Set(this.algoritmosSelecionados)) as Algoritmo[];
+      const selecionados = Array.from(new Set(this.algoritmosSelecionados)) as Algoritmo[];
 
       this.construirPaletaProcessos(base);
 
@@ -741,20 +786,21 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         this.dadosGantt = pack.dados;
         this.calcularMetricasPorProcesso();
 
-        const ex = this.svc.calcularExtrasGerais(listaCopia, r.execucoes);
+        const extras = this.svc.calcularExtrasGerais(listaCopia, r.execucoes);
         this.kpisResumo = {
-          makespan: ex.makespan,
-          totalExec: (ex as any).totalExec,
-          ociosidade: ex.ociosidade,
-          utilizacaoCpu: ex.utilizacaoCpu,
-          throughput: ex.throughput,
-          ctxSwitches: ex.ctxSwitches
+          makespan: extras.makespan,
+          totalExec: extras.totalExec,
+          ociosidade: extras.ociosidade,
+          utilizacaoCpu: extras.utilizacaoCpu,
+          throughput: extras.throughput,
+          ctxSwitches: extras.ctxSwitches
         };
 
         this.resultadoConfirmado = JSON.parse(JSON.stringify(this.resultado));
         this.comparacaoConfirmada = [];
         this.dadosGanttConfirmado = JSON.parse(JSON.stringify(this.dadosGantt));
 
+        this.updateChartResultsFromSelection();
         this.rolarParaResultados();
         return;
       }
@@ -768,9 +814,8 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         try {
           const listaCopia: Processo[] = base.map(p => ({ ...p }));
           const r = this.executarAlgoritmo(algo, listaCopia, q, opts);
-
-          const justica = this.svc.calcularJusticaPorEspera(r, listaCopia);
-          const extras  = this.svc.calcularExtrasGerais(listaCopia, r.execucoes);
+          const justica = this.calcularJusticaPorEspera(r, listaCopia);
+          const extras = this.svc.calcularExtrasGerais(listaCopia, r.execucoes);
 
           this.resultadosMulti[algo] = r;
           const { dados, custom } = this.montarGanttComCores(r.execucoes);
@@ -778,12 +823,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
           this.coresGanttMulti[algo] = custom;
 
           this.comparacao.push({
-            algoritmo: algo as any,
+            algoritmo: algo,
             espera: r.tempoMedioEspera,
             retorno: r.tempoMedioRetorno,
             resposta: r.tempoMedioResposta,
-            justica: justica,
-
+            justica,
             makespan: extras.makespan,
             utilizacao: extras.utilizacaoCpu,
             ociosidade: extras.ociosidade,
@@ -798,8 +842,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
         } catch (e) {
           console.error(`[${algo}] falhou`, e);
           this.comparacao.push({
-            algoritmo: algo as any,
-            espera: NaN, retorno: NaN, resposta: NaN, justica: NaN,
+            algoritmo: algo, espera: NaN, retorno: NaN, resposta: NaN, justica: NaN,
             makespan: NaN, utilizacao: NaN, ociosidade: NaN, throughput: NaN, ctxSwitches: NaN,
             slowdownMedio: NaN, slowdownMax: NaN, dpEspera: NaN, dpRetorno: NaN, dpResposta: NaN
           });
@@ -811,13 +854,24 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.comparacaoConfirmada = this.comparacao.map(c => ({ ...c }));
       this.dadosGanttConfirmado = [];
 
+      this.updateChartResultsFromSelection();
       this.rolarParaResultados();
     } catch (err: any) {
       console.error('Falha geral em simular()', err);
       this.mensagemErro = `Erro ao simular: ${err?.message || err}`;
       this.preferirConfig = true;
       this.abaDireitaIndex = 0;
+      this.updateChartResultsFromSelection();
     }
+  }
+
+  onChartMetricChange(value: ChartTipo) {
+    this.chartSelecionado = value;
+    this.updateChartResultsFromSelection();
+  }
+
+  private updateChartResultsFromSelection() {
+    this.chartResults = this.getDadosComparacao(this.chartSelecionado);
   }
 
   private atualizarPreviewEdicao() {
@@ -852,6 +906,7 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.ganttMulti = {};
       this.coresGanttMulti = {};
       this.kpisResumo = undefined;
+      this.updateChartResultsFromSelection();
       return;
     }
 
@@ -882,15 +937,14 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.resultado = r;
       this.dadosGantt = pack.dados;
       this.calcularMetricasPorProcesso();
-
-      const ex = this.svc.calcularExtrasGerais(listaPreview, r.execucoes);
+      const extras = this.svc.calcularExtrasGerais(listaPreview, r.execucoes);
       this.kpisResumo = {
-        makespan: ex.makespan,
-        totalExec: (ex as any).totalExec,
-        ociosidade: ex.ociosidade,
-        utilizacaoCpu: ex.utilizacaoCpu,
-        throughput: ex.throughput,
-        ctxSwitches: ex.ctxSwitches
+        makespan: extras.makespan,
+        totalExec: extras.totalExec,
+        ociosidade: extras.ociosidade,
+        utilizacaoCpu: extras.utilizacaoCpu,
+        throughput: extras.throughput,
+        ctxSwitches: extras.ctxSwitches
       };
     } else {
       this.resultado = undefined;
@@ -903,12 +957,11 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       this.kpisResumo = undefined;
 
       for (const algo of selecionados) {
-        const r = this.executarAlgoritmo(algo as Algoritmo, listaPreview.map(p => ({ ...p })), q, opts);
-        const justica = this.svc.calcularJusticaPorEspera(r, listaPreview);
-        const extras  = this.svc.calcularExtrasGerais(listaPreview, r.execucoes);
-
+        const r = this.executarAlgoritmo(algo, listaPreview.map(p => ({ ...p })), q, opts);
+        const justica = this.calcularJusticaPorEspera(r, listaPreview);
+        const extras = this.svc.calcularExtrasGerais(listaPreview, r.execucoes);
         this.comparacao.push({
-          algoritmo: algo as any,
+          algoritmo: algo,
           espera: r.tempoMedioEspera,
           retorno: r.tempoMedioRetorno,
           resposta: r.tempoMedioResposta,
@@ -924,14 +977,15 @@ export class SimuladorEscalonamentoComponent implements OnInit {
           dpRetorno: extras.dpRetorno,
           dpResposta: extras.dpResposta
         });
-
         const { dados, custom } = this.montarGanttComCores(r.execucoes);
-        this.resultadosMulti[algo as Algoritmo] = r;
-        this.ganttMulti[algo as Algoritmo] = dados;
-        this.coresGanttMulti[algo as Algoritmo] = custom;
+        this.resultadosMulti[algo] = r;
+        this.ganttMulti[algo] = dados;
+        this.coresGanttMulti[algo] = custom;
       }
       this.atualizarGraficosComparacao();
     }
+
+    this.updateChartResultsFromSelection();
   }
 
   private atualizarGraficosComparacao() {
@@ -941,6 +995,14 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     this.dadosComparacao.retorno  = make('retorno');
     this.dadosComparacao.resposta = make('resposta');
     this.dadosComparacao.justica  = make('justica');
+  }
+
+  getDadosComparacao(tipo: ChartTipo) {
+    if (tipo === 'espera')   return this.dadosComparacao.espera;
+    if (tipo === 'retorno')  return this.dadosComparacao.retorno;
+    if (tipo === 'resposta') return this.dadosComparacao.resposta;
+    if (tipo === 'justica')  return this.dadosComparacao.justica;
+    return this.comparacao.map(c => ({ name: c.algoritmo, value: (c as any)[tipo] as number }));
   }
 
   private executarAlgoritmo(algo: Algoritmo, lista: Processo[], quantum: number, opts: any): ResultadoSimulacao {
@@ -961,6 +1023,27 @@ export class SimuladorEscalonamentoComponent implements OnInit {
       case 'RM':               return this.svc.simularRM(lista, opts.rm);
       case 'DM':               return this.svc.simularDM(lista, opts.dm);
     }
+  }
+
+  private jain(valores: number[]): number {
+    if (!valores.length) return 0;
+    const soma = valores.reduce((a,b)=>a+b,0);
+    const soma2 = valores.reduce((a,b)=>a+b*b,0);
+    return soma === 0 ? 0 : +((soma*soma) / (valores.length * soma2)).toFixed(3);
+  }
+
+  private calcularJusticaPorEspera(exec: ResultadoSimulacao, lista: Processo[]): number {
+    const mapa = new Map<string, { primeiro: number; fim: number; exec: number; chegada: number }>();
+    for (const p of lista) mapa.set(p.id, { primeiro: Number.POSITIVE_INFINITY, fim: 0, exec: 0, chegada: p.tempoChegada });
+    for (const e of exec.execucoes) {
+      const m = mapa.get(e.processoId)!;
+      m.primeiro = Math.min(m.primeiro, e.inicio);
+      m.fim = Math.max(m.fim, e.fim);
+      m.exec += (e.fim - e.inicio);
+    }
+    const esperas = [...mapa.values()].map(m => (m.fim - m.chegada) - m.exec);
+    const equidade = esperas.map(w => 1 / (w + 1));
+    return this.jain(equidade);
   }
 
   private montarGanttComCores(execs: { processoId: string; inicio: number; fim: number }[]) {
@@ -1029,8 +1112,6 @@ export class SimuladorEscalonamentoComponent implements OnInit {
     const h = this.highlightedName;
     return h ? cores.map(c => c.name === h ? { name: c.name, value: this.highlightColor } : c) : cores;
   }
-
-  get coresPersonalizadas(): Array<{ name: string; value: string }> { return this.coresGanttUnico; }
 
   getJustica(algo: Algoritmo): number {
     const item = this.comparacao.find(c => c.algoritmo === algo);

@@ -1,14 +1,65 @@
 <mat-toolbar color="primary" class="app-toolbar">
   <div class="toolbar-left">
-    <span class="titulo">Scheduling Simulator — CPU</span>
+    
+    <ng-container *ngIf="page==='simulate'; else toolbarTitleDefault">
+      <span class="titulo">Escolha uma métrica de comparação</span>
+
+      <mat-form-field
+        *ngIf="showChartQuickSelect"
+        appearance="outline"
+        class="toolbar-select compact"
+        style="margin-left:12px; width:230px">
+
+        <mat-select
+        [value]="chartSelecionado"
+        (selectionChange)="onChartMetricChange($event.value)"
+      >
+          <mat-select-trigger>{{ chartLabel[chartSelecionado] }}</mat-select-trigger>
+
+          <mat-option [value]="'espera'">Espera média</mat-option>
+          <mat-option [value]="'retorno'">Retorno médio</mat-option>
+          <mat-option [value]="'resposta'">Resposta média</mat-option>
+          <mat-option [value]="'justica'">Justiça (Jain)</mat-option>
+          <mat-divider></mat-divider>
+          <mat-option [value]="'makespan'">Makespan</mat-option>
+          <mat-option [value]="'utilizacao'">Utilização da CPU</mat-option>
+          <mat-option [value]="'ociosidade'">Ociosidade</mat-option>
+          <mat-option [value]="'throughput'">Throughput</mat-option>
+          <mat-option [value]="'ctxSwitches'">Trocas de contexto</mat-option>
+          <mat-divider></mat-divider>
+          <mat-option [value]="'slowdownMedio'">Slowdown médio</mat-option>
+          <mat-option [value]="'slowdownMax'">Slowdown máximo</mat-option>
+          <mat-divider></mat-divider>
+          <mat-option [value]="'dpEspera'">DP (espera)</mat-option>
+          <mat-option [value]="'dpRetorno'">DP (retorno)</mat-option>
+          <mat-option [value]="'dpResposta'">DP (resposta)</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </ng-container>
+
+    <ng-template #toolbarTitleDefault>
+      <span class="titulo">Scheduling Simulator — CPU</span>
+    </ng-template>
   </div>
 
   <div class="toolbar-right">
-    <a mat-stroked-button [routerLink]="['/aula']" routerLinkActive #aulaRLA="routerLinkActive" [color]="aulaRLA.isActive ? 'accent' : undefined">
+    <a
+      mat-stroked-button
+      [routerLink]="['/aula']"
+      routerLinkActive
+      #aulaRLA="routerLinkActive"
+      [color]="aulaRLA.isActive ? 'accent' : undefined"
+    >
       Modo Aula
     </a>
 
-    <a mat-stroked-button [routerLink]="['/simular']" routerLinkActive #explorarRLA="routerLinkActive" [color]="explorarRLA.isActive ? 'accent' : undefined">
+    <a
+      mat-stroked-button
+      [routerLink]="['/simular']"
+      routerLinkActive
+      #explorarRLA="routerLinkActive"
+      [color]="explorarRLA.isActive ? 'accent' : undefined"
+    >
       Modo Exploração
     </a>
   </div>
@@ -16,40 +67,16 @@
 
 <main class="layout" [ngClass]="{ 'comparacao-full': isComparacaoAtiva }">
   <section class="painel-left">
-    <ng-container *ngIf="isComparacaoAtiva; else tabsLecture">
-      <div class="chart-toolbar">
-        <h3 class="va-title">Comparação — gráfico</h3>
-        <div class="grow"></div>
-
-        <mat-form-field appearance="outline" class="chart-select" style="min-width:260px">
-          <mat-label>Ver</mat-label>
-          <mat-select [(ngModel)]="chartSelecionado" [ngModelOptions]="{standalone:true}">
-            <mat-option value="espera">Espera média</mat-option>
-            <mat-option value="retorno">Retorno médio</mat-option>
-            <mat-option value="resposta">Resposta média</mat-option>
-            <mat-option value="justica">Justiça (Jain)</mat-option>
-            <mat-divider></mat-divider>
-            <mat-option value="makespan">Makespan</mat-option>
-            <mat-option value="utilizacao">Utilização da CPU</mat-option>
-            <mat-option value="ociosidade">Ociosidade</mat-option>
-            <mat-option value="throughput">Throughput</mat-option>
-            <mat-option value="ctxSwitches">Trocas de contexto</mat-option>
-            <mat-divider></mat-divider>
-            <mat-option value="slowdownMedio">Slowdown médio</mat-option>
-            <mat-option value="slowdownMax">Slowdown máximo</mat-option>
-            <mat-divider></mat-divider>
-            <mat-option value="dpEspera">DP (espera)</mat-option>
-            <mat-option value="dpRetorno">DP (retorno)</mat-option>
-            <mat-option value="dpResposta">DP (resposta)</mat-option>
-          </mat-select>
-        </mat-form-field>
-      </div>
-
-      <div class="chart-host">
+    <ng-container *ngIf="page==='simulate'; else tabsLecture">
+      <div class="chart-host" style="margin-top:8px">
         <ngx-charts-bar-vertical
-          [results]="getDadosComparacao(chartSelecionado)"
-          [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true"
-          [scheme]="colorScheme">
+          [results]="chartResults"
+          [xAxis]="true"
+          [yAxis]="true"
+          [legend]="false"
+          [animations]="true"
+          [scheme]="colorScheme"
+        >
         </ngx-charts-bar-vertical>
       </div>
     </ng-container>
@@ -60,8 +87,8 @@
           <div class="cartao slide">
             <h3>(Resize-able) Process Timeline</h3>
             <p>
-              • Conceitos: chegada, duração (burst), prioridade, preempção. <br>
-              • Métricas: espera (WT), retorno/turnaround (TAT), resposta (RT). <br>
+              • Conceitos: chegada, duração (burst), prioridade, preempção. <br />
+              • Métricas: espera (WT), retorno/turnaround (TAT), resposta (RT). <br />
               • Trade-offs: FCFS, SJF, SRTF, RR, Prioridade, MLFQ, Lottery, Stride, Fair-Share, CFS.
             </p>
             <mat-divider></mat-divider>
@@ -81,7 +108,11 @@
   </section>
 
   <section class="painel-right" *ngIf="modo==='exploration'; else dicaLecture">
-    <mat-tab-group class="right-tabs" [selectedIndex]="abaDireitaIndex" (selectedIndexChange)="onAbaDireitaChange($event)">
+    <mat-tab-group
+      class="right-tabs"
+      [selectedIndex]="abaDireitaIndex"
+      (selectedIndexChange)="onAbaDireitaChange($event)"
+    >
       <mat-tab label="Simulação">
         <ng-template #configProcessos>
           <form class="va-panel" [formGroup]="formularioProcesso" *ngIf="mostrarForm || editingId">
@@ -90,42 +121,68 @@
             <div class="va-grid">
               <label class="va-field">
                 <span class="va-label">ID*</span>
-                <input class="va-input" formControlName="id" required placeholder="P1" (focus)="limparMensagem()">
+                <input
+                  class="va-input"
+                  formControlName="id"
+                  required
+                  placeholder="P1"
+                  (focus)="limparMensagem()"
+                />
               </label>
 
               <label class="va-field">
                 <span class="va-label">Tempo de chegada*</span>
-                <input class="va-input" formControlName="tempoChegada" required type="number" min="0" (focus)="limparMensagem()">
+                <input
+                  class="va-input"
+                  formControlName="tempoChegada"
+                  required
+                  type="number"
+                  min="0"
+                  (focus)="limparMensagem()"
+                />
               </label>
 
               <label class="va-field">
                 <span class="va-label">Duração (burst)*</span>
-                <input class="va-input" formControlName="duracao" required type="number" min="1" (focus)="limparMensagem()">
+                <input
+                  class="va-input"
+                  formControlName="duracao"
+                  required
+                  type="number"
+                  min="1"
+                  (focus)="limparMensagem()"
+                />
               </label>
 
               <label class="va-field">
                 <span class="va-label">Prioridade</span>
-                <input class="va-input" formControlName="prioridade" type="number" min="1" (focus)="limparMensagem()">
+                <input
+                  class="va-input"
+                  formControlName="prioridade"
+                  type="number"
+                  min="1"
+                  (focus)="limparMensagem()"
+                />
               </label>
 
               <label class="va-field" *ngIf="showTickets">
                 <span class="va-label">Tickets (Lottery/Stride)</span>
-                <input class="va-input" formControlName="tickets" type="number" min="1">
+                <input class="va-input" formControlName="tickets" type="number" min="1" />
               </label>
 
               <label class="va-field" *ngIf="showGrupo">
                 <span class="va-label">Grupo (Fair/CFS)</span>
-                <input class="va-input" formControlName="grupo" type="text" placeholder="ex: turmaA">
+                <input class="va-input" formControlName="grupo" type="text" placeholder="ex: turmaA" />
               </label>
 
               <label class="va-field" *ngIf="showShare">
                 <span class="va-label">Share (Fair)</span>
-                <input class="va-input" formControlName="share" type="number" min="1">
+                <input class="va-input" formControlName="share" type="number" min="1" />
               </label>
 
               <label class="va-field" *ngIf="showNice">
                 <span class="va-label">Nice (CFS)</span>
-                <input class="va-input" formControlName="nice" type="number">
+                <input class="va-input" formControlName="nice" type="number" />
               </label>
 
               <label class="va-field" *ngIf="showMLQ">
@@ -141,17 +198,17 @@
 
               <label class="va-field" *ngIf="showMLFQ">
                 <span class="va-label">MLFQ — Nível inicial</span>
-                <input class="va-input" formControlName="mlfqNivelInicial" type="number" min="0">
+                <input class="va-input" formControlName="mlfqNivelInicial" type="number" min="0" />
               </label>
 
               <label class="va-field" *ngIf="showRM">
                 <span class="va-label">RM — Período (por processo)</span>
-                <input class="va-input" formControlName="periodo" type="number" min="1">
+                <input class="va-input" formControlName="periodo" type="number" min="1" />
               </label>
 
               <label class="va-field" *ngIf="showDM">
                 <span class="va-label">DM — Deadline relativa</span>
-                <input class="va-input" formControlName="deadline" type="number" min="1">
+                <input class="va-input" formControlName="deadline" type="number" min="1" />
               </label>
             </div>
           </form>
@@ -164,7 +221,11 @@
                 <span class="va-label">Algoritmo(s)*</span>
                 <div class="va-checkbox-group">
                   <label *ngFor="let algo of listaAlgoritmos" class="va-checkbox">
-                    <input type="checkbox" [checked]="algoritmosSelecionados.includes(algo)" (change)="onToggleAlgoritmo(algo, $event)">
+                    <input
+                      type="checkbox"
+                      [checked]="algoritmosSelecionados.includes(algo)"
+                      (change)="onToggleAlgoritmo(algo, $event)"
+                    />
                     <span>{{ algo }}</span>
                   </label>
                 </div>
@@ -172,45 +233,45 @@
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('RR')">
                 <span class="va-label">Quantum (RR)</span>
-                <input class="va-input" type="number" formControlName="quantum" (focus)="limparMensagem()">
+                <input class="va-input" type="number" formControlName="quantum" (focus)="limparMensagem()" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
                 <span class="va-label">MLFQ — Níveis</span>
-                <input class="va-input" type="number" formControlName="mlfqNiveis">
+                <input class="va-input" type="number" formControlName="mlfqNiveis" />
               </label>
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
                 <span class="va-label">MLFQ — Quantum base</span>
-                <input class="va-input" type="number" formControlName="mlfqQuantumBase">
+                <input class="va-input" type="number" formControlName="mlfqQuantumBase" />
               </label>
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('MLFQ')">
                 <span class="va-label">MLFQ — Boost (período)</span>
-                <input class="va-input" type="number" formControlName="mlfqBoost">
+                <input class="va-input" type="number" formControlName="mlfqBoost" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('LOTTERY')">
                 <span class="va-label">Lottery — Tickets padrão</span>
-                <input class="va-input" type="number" formControlName="lotteryTicketsPadrao">
+                <input class="va-input" type="number" formControlName="lotteryTicketsPadrao" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('STRIDE')">
                 <span class="va-label">Stride — Tickets padrão</span>
-                <input class="va-input" type="number" formControlName="strideTicketsPadrao">
+                <input class="va-input" type="number" formControlName="strideTicketsPadrao" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('FAIR')">
                 <span class="va-label">Fair — Share padrão</span>
-                <input class="va-input" type="number" formControlName="fairSharePadrao">
+                <input class="va-input" type="number" formControlName="fairSharePadrao" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('CFS')">
                 <span class="va-label">CFS — Nice padrão</span>
-                <input class="va-input" type="number" formControlName="cfsNicePadrao">
+                <input class="va-input" type="number" formControlName="cfsNicePadrao" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('PRIORIDADE_AGING')">
                 <span class="va-label">Aging rate (↓ prioridade por tempo de espera)</span>
-                <input class="va-input" type="number" step="0.1" formControlName="agingRate">
+                <input class="va-input" type="number" step="0.1" formControlName="agingRate" />
               </label>
 
               <div class="va-field va-field-col2" *ngIf="algoritmosSelecionados.includes('MLQ')">
@@ -225,7 +286,7 @@
                   </label>
                   <label class="va-field">
                     <span class="va-label">Quantum FG</span>
-                    <input class="va-input" type="number" formControlName="mlqQuantumFG">
+                    <input class="va-input" type="number" formControlName="mlqQuantumFG" />
                   </label>
                   <label class="va-field">
                     <span class="va-label">Background</span>
@@ -236,23 +297,23 @@
                   </label>
                   <label class="va-field">
                     <span class="va-label">Quantum BG</span>
-                    <input class="va-input" type="number" formControlName="mlqQuantumBG">
+                    <input class="va-input" type="number" formControlName="mlqQuantumBG" />
                   </label>
                 </div>
               </div>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('RM')">
                 <span class="va-label">RM — Período padrão (se processo não tiver)</span>
-                <input class="va-input" type="number" formControlName="rmPeriodPadrao">
+                <input class="va-input" type="number" formControlName="rmPeriodPadrao" />
               </label>
 
               <label class="va-field" *ngIf="algoritmosSelecionados.includes('DM')">
                 <span class="va-label">DM — Deadline relativo padrão</span>
-                <input class="va-input" type="number" formControlName="dmDeadlinePadrao">
+                <input class="va-input" type="number" formControlName="dmDeadlinePadrao" />
               </label>
 
               <label class="va-field va-toggle" *ngIf="editingId && jaSimulou">
-                <input type="checkbox" formControlName="preview">
+                <input type="checkbox" formControlName="preview" />
                 <span>Pré-visualizar métricas</span>
               </label>
             </div>
@@ -272,7 +333,10 @@
             <table class="va-table">
               <thead>
                 <tr>
-                  <th>ID</th><th>Chegada</th><th>Duração</th><th>Prioridade</th>
+                  <th>ID</th>
+                  <th>Chegada</th>
+                  <th>Duração</th>
+                  <th>Prioridade</th>
                 </tr>
               </thead>
               <tbody>
@@ -304,7 +368,9 @@
           <section class="va-grid" *ngIf="resultado">
             <div class="va-panel">
               <h3 class="va-title">Métricas</h3>
-              <p class="muted">Algoritmo(s): {{ algoritmosSelecionados.length ? algoritmosSelecionados.join(', ') : '—' }}</p>
+              <p class="muted">
+                Algoritmo(s): {{ algoritmosSelecionados.length ? algoritmosSelecionados.join(', ') : '—' }}
+              </p>
               <p><strong>Espera média:</strong> {{ resultado.tempoMedioEspera }}</p>
               <p><strong>Retorno médio:</strong> {{ resultado.tempoMedioRetorno }}</p>
               <p><strong>Resposta média:</strong> {{ resultado.tempoMedioResposta }}</p>
@@ -325,9 +391,13 @@
               <div class="chart-clip">
                 <ngx-charts-bar-horizontal-stacked
                   [results]="dadosGantt"
-                  [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true"
+                  [xAxis]="true"
+                  [yAxis]="true"
+                  [legend]="false"
+                  [animations]="true"
                   [customColors]="coresGanttUnico"
-                  [view]="[ganttWidth, ganttHeightSingle]">
+                  [view]="[ganttWidth, ganttHeightSingle]"
+                >
                 </ngx-charts-bar-horizontal-stacked>
               </div>
               <small class="muted">Passe o mouse para ver intervalos.</small>
@@ -335,14 +405,22 @@
               <div class="va-inline" style="flex-wrap: wrap; gap:8px; margin-top:8px;">
                 <span class="va-label" style="margin-right:6px;">Legenda:</span>
                 <ng-container *ngFor="let p of processos()">
-                  <span class="va-chip" [style.background]="paletaProcessos[p.id]" [style.color]="'#fff'">{{ p.id }}</span>
+                  <span
+                    class="va-chip"
+                    [style.background]="paletaProcessos[p.id]"
+                    [style.color]="'#fff'"
+                    >{{ p.id }}</span
+                  >
                 </ng-container>
                 <span class="va-chip" [style.background]="paletaProcessos['IDLE']" [style.color]="'#000'">IDLE</span>
               </div>
 
               <div *ngIf="resultado?.execucoes?.length" class="passo-indicador">
                 Passo {{ passoAtual + 1 }} / {{ totalPassos }}
-                <mat-progress-bar mode="determinate" [value]="((passoAtual + 1) / totalPassos) * 100"></mat-progress-bar>
+                <mat-progress-bar
+                  mode="determinate"
+                  [value]="((passoAtual + 1) / totalPassos) * 100"
+                ></mat-progress-bar>
                 <div class="muted" style="margin-top:6px;">
                   Execução atual:
                   <ng-container *ngIf="resultado.execucoes[passoAtual] as e">
@@ -420,32 +498,52 @@
                 <div class="mini-chart">
                   <div class="mini-title">Espera média</div>
                   <ngx-charts-bar-vertical
-                    [results]="dadosComparacao.espera" [xAxis]="true" [yAxis]="true"
-                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                    [results]="dadosComparacao.espera"
+                    [xAxis]="true"
+                    [yAxis]="true"
+                    [legend]="false"
+                    [animations]="true"
+                    [scheme]="colorScheme"
+                  >
                   </ngx-charts-bar-vertical>
                 </div>
 
                 <div class="mini-chart">
                   <div class="mini-title">Retorno médio</div>
                   <ngx-charts-bar-vertical
-                    [results]="dadosComparacao.retorno" [xAxis]="true" [yAxis]="true"
-                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                    [results]="dadosComparacao.retorno"
+                    [xAxis]="true"
+                    [yAxis]="true"
+                    [legend]="false"
+                    [animations]="true"
+                    [scheme]="colorScheme"
+                  >
                   </ngx-charts-bar-vertical>
                 </div>
 
                 <div class="mini-chart">
                   <div class="mini-title">Resposta média</div>
                   <ngx-charts-bar-vertical
-                    [results]="dadosComparacao.resposta" [xAxis]="true" [yAxis]="true"
-                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                    [results]="dadosComparacao.resposta"
+                    [xAxis]="true"
+                    [yAxis]="true"
+                    [legend]="false"
+                    [animations]="true"
+                    [scheme]="colorScheme"
+                  >
                   </ngx-charts-bar-vertical>
                 </div>
 
                 <div class="mini-chart">
                   <div class="mini-title">Justiça (Jain)</div>
                   <ngx-charts-bar-vertical
-                    [results]="dadosComparacao.justica" [xAxis]="true" [yAxis]="true"
-                    [legend]="false" [animations]="true" [scheme]="colorScheme">
+                    [results]="dadosComparacao.justica"
+                    [xAxis]="true"
+                    [yAxis]="true"
+                    [legend]="false"
+                    [animations]="true"
+                    [scheme]="colorScheme"
+                  >
                   </ngx-charts-bar-vertical>
                 </div>
               </div>
@@ -459,22 +557,33 @@
               <div class="chart-clip">
                 <ngx-charts-bar-horizontal-stacked
                   [results]="ganttMulti[algo]"
-                  [xAxis]="true" [yAxis]="true" [legend]="false" [animations]="true"
+                  [xAxis]="true"
+                  [yAxis]="true"
+                  [legend]="false"
+                  [animations]="true"
                   [customColors]="coresGanttMulti[algo]"
-                  [view]="[ganttWidth, ganttHeightMulti(algo)]">
+                  [view]="[ganttWidth, ganttHeightMulti(algo)]"
+                >
                 </ngx-charts-bar-horizontal-stacked>
               </div>
 
               <div class="va-inline" style="flex-wrap: wrap; gap:8px; margin-top:8px;">
                 <span class="va-label" style="margin-right:6px;">Legenda:</span>
                 <ng-container *ngFor="let p of processos()">
-                  <span class="va-chip" [style.background]="paletaProcessos[p.id]" [style.color]="'#fff'">{{ p.id }}</span>
+                  <span
+                    class="va-chip"
+                    [style.background]="paletaProcessos[p.id]"
+                    [style.color]="'#fff'"
+                    >{{ p.id }}</span
+                  >
                 </ng-container>
                 <span class="va-chip" [style.background]="paletaProcessos['IDLE']" [style.color]="'#000'">IDLE</span>
               </div>
 
               <table class="va-table" style="margin-top:10px" *ngIf="resultadosMulti[algo] as r">
-                <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+                <thead>
+                  <tr><th>Métrica</th><th>Valor</th></tr>
+                </thead>
                 <tbody>
                   <tr><td>Espera média</td><td class="num">{{ r.tempoMedioEspera }}</td></tr>
                   <tr><td>Retorno médio</td><td class="num">{{ r.tempoMedioRetorno }}</td></tr>
@@ -482,7 +591,7 @@
                   <tr><td>Justiça (Jain)</td><td class="num">{{ getJustica(algo) | number:'1.3-3' }}</td></tr>
                 </tbody>
               </table>
-            
+
             </div>
           </section>
         </ng-template>
@@ -539,7 +648,9 @@
       <button class="dock-item" type="button" (click)="preencherExemplo()">Exemplo</button>
       <button class="dock-item warn" type="button" (click)="limpar()">Limpar</button>
 
-      <button class="dock-item" type="button" *ngIf="editingId" (click)="salvarEdicao()" [disabled]="!canSave">Salvar edição</button>
+      <button class="dock-item" type="button" *ngIf="editingId" (click)="salvarEdicao()" [disabled]="!canSave">
+        Salvar edição
+      </button>
       <button class="dock-item" type="button" *ngIf="editingId" (click)="cancelarEdicao()">Cancelar edição</button>
     </div>
   </div>
@@ -547,16 +658,37 @@
 
 <footer class="player" *ngIf="resultado && totalPassos">
   <div class="player-left">
-    <button mat-icon-button (click)="inicio()" [disabled]="!resultado || !totalPassos" matTooltip="Início"><mat-icon>first_page</mat-icon></button>
-    <button mat-icon-button (click)="passoAnterior()" [disabled]="!resultado || passoAtual===0" matTooltip="Anterior"><mat-icon>chevron_left</mat-icon></button>
-    <button mat-fab color="primary" (click)="tocando ? pausar() : tocar()" [disabled]="!resultado || !totalPassos" matTooltip="Play/Pause"><mat-icon>{{ tocando ? 'pause' : 'play_arrow' }}</mat-icon></button>
-    <button mat-icon-button (click)="proximoPasso()" [disabled]="!resultado || passoAtual>=totalPassos-1" matTooltip="Próximo"><mat-icon>chevron_right</mat-icon></button>
-    <button mat-icon-button (click)="fim()" [disabled]="!resultado || !totalPassos" matTooltip="Fim"><mat-icon>last_page</mat-icon></button>
+    <button mat-icon-button (click)="inicio()" [disabled]="!resultado || !totalPassos" matTooltip="Início">
+      <mat-icon>first_page</mat-icon>
+    </button>
+    <button mat-icon-button (click)="passoAnterior()" [disabled]="!resultado || passoAtual===0" matTooltip="Anterior">
+      <mat-icon>chevron_left</mat-icon>
+    </button>
+    <button
+      mat-fab
+      color="primary"
+      (click)="tocando ? pausar() : tocar()"
+      [disabled]="!resultado || !totalPassos"
+      matTooltip="Play/Pause"
+    >
+      <mat-icon>{{ tocando ? 'pause' : 'play_arrow' }}</mat-icon>
+    </button>
+    <button
+      mat-icon-button
+      (click)="proximoPasso()"
+      [disabled]="!resultado || passoAtual>=totalPassos-1"
+      matTooltip="Próximo"
+    >
+      <mat-icon>chevron_right</mat-icon>
+    </button>
+    <button mat-icon-button (click)="fim()" [disabled]="!resultado || !totalPassos" matTooltip="Fim">
+      <mat-icon>last_page</mat-icon>
+    </button>
   </div>
   <div class="player-right">
     <span class="muted">Speed</span>
     <button class="va-btn" (click)="setVelocidade(0.5)" [class.is-active]="velocidade===0.5">0.5×</button>
-    <button class="va-btn" (click)="setVelocidade(1)"   [class.is-active]="velocidade===1">1.0×</button>
-    <button class="va-btn" (click)="setVelocidade(2)"   [class.is-active]="velocidade===2">2.0×</button>
+    <button class="va-btn" (click)="setVelocidade(1)" [class.is-active]="velocidade===1">1.0×</button>
+    <button class="va-btn" (click)="setVelocidade(2)" [class.is-active]="velocidade===2">2.0×</button>
   </div>
 </footer>

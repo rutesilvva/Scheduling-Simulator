@@ -621,3 +621,48 @@ form.va-panel {
   font-weight: 600;
   color: #b45309;
 }
+
+:host ::ng-deep .toolbar-select.compact {
+  width: 170px !important;           
+  --h: 30px;                          
+  --font: 13px;
+}
+
+:host ::ng-deep .toolbar-select.compact .mdc-text-field {
+  height: var(--h) !important;
+  min-height: var(--h) !important;
+}
+
+:host ::ng-deep .toolbar-select.compact .mat-mdc-form-field-flex {
+  height: var(--h) !important;
+}
+
+:host ::ng-deep .toolbar-select.compact .mat-mdc-form-field-infix {
+  padding: 0 var(--pad-x) !important;
+  min-height: var(--h) !important;
+}
+
+:host ::ng-deep .toolbar-select.compact .mat-mdc-select-trigger {
+  height: var(--h) !important;
+  align-items: center !important;
+}
+
+:host ::ng-deep .toolbar-select.compact .mdc-notched-outline__leading,
+:host ::ng-deep .toolbar-select.compact .mdc-notched-outline__notch,
+:host ::ng-deep .toolbar-select.compact .mdc-notched-outline__trailing {
+  height: var(--h) !important;
+}
+
+:host ::ng-deep .toolbar-select.compact .mat-mdc-form-field-subscript-wrapper {
+  display: none !important;
+}
+
+:host ::ng-deep .toolbar-select.compact .mat-mdc-select-value-text {
+  font-size: var(--font) !important;
+  line-height: 1 !important;
+}
+
+.chart-host {
+  position: relative;
+  height: 450px; 
+}
