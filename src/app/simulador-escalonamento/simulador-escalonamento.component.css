@@ -25,7 +25,7 @@
 
 .layout {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: 1fr 1.6fr; 
   gap: 16px;
   max-width: 1280px;
   margin: 16px auto;
@@ -85,15 +85,6 @@
   }
 }
 
-.va-panel {
-  background: #fff;
-  border: 1px solid rgba(0,0,0,.08);
-  border-radius: 10px;
-  padding: 14px;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-  overflow: hidden;
-  box-sizing: border-box;
-}
 
 .va-title {
   margin: 0 0 10px;
@@ -665,4 +656,15 @@ form.va-panel {
 .chart-host {
   position: relative;
   height: 450px; 
+}
+
+.va-panel {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  /* overflow: hidden; */   /* << COMENTE OU REMOVA ESTA LINHA */
+  overflow-x: auto;      /* << ADICIONE ESTA LINHA PARA ROLAGEM HORIZONTAL */
+  box-sizing: border-box;
 }

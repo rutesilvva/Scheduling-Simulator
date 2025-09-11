@@ -11,22 +11,17 @@ export interface ResultadoSimulacao {
   tempoMedioResposta: number;
 }
 
-/**
- * Linha de resumo por algoritmo (usada na tabela e nos gráficos).
- * Mantive `algoritmo` como string para não amarrar ao tipo Algoritmo do componente.
- */
+
 export interface ResultadoComparacao {
   algoritmo: string;
 
-  // clássicas
   espera: number;
   retorno: number;
   resposta: number;
   justica: number;
 
-  // gerais novas
   makespan: number;
-  utilizacao: number;     // 0..1
+  utilizacao: number;    
   ociosidade: number;
   throughput: number;
   ctxSwitches: number;
