@@ -1,8 +1,6 @@
 # Scheduling Simulator
 
 Simulador interativo de algoritmos de escalonamento de CPU, desenvolvido em **Angular + TypeScript** com interface em **Angular Material** e gráficos em **ngx-charts**.  
-O projeto foi criado como **Trabalho para compor a terceira nota da disciplina Sistemas Operacionais (UFCG)**, sob orientação do professor **Thiago Emmanuel Pereira da Cunha Silva**.
-
 ## Funcionalidades
 
 - **Cadastro de processos** com:
@@ -54,6 +52,7 @@ O projeto foi criado como **Trabalho para compor a terceira nota da disciplina S
 - [TypeScript](https://www.typescriptlang.org/)
 - [Angular Material](https://material.angular.io/)
 - [Ngx-Charts](https://swimlane.github.io/ngx-charts/)
+
 
 
 
